@@ -49,6 +49,10 @@ func init() {
 }
 
 var (
+	// cmdarg.Arg是一个string类型的切片，用来实现对多个config参数的支持，xray run -c abc -c xyz
+	// flag包默认只能解析基本类型的参数，int，string，bool等，但是提供了flag.Var函数用于对自定义类型进行解析
+	// flag.Var的value参数是一个flag.Value接口类型，有String和Set方法（实现了接口的方法，就是实现了这个接口）
+	// cmdarg.Arg实现了String和Set方法，用于把所有解析到的config参数存储到configFiles这个string类型的切片（跳转common/cmdarg/cmdarg.go查看）
 	configFiles cmdarg.Arg // "Config file for Xray.", the option is customed type, parse in main
 	configDir   string
 	dump        = cmdRun.Flag.Bool("dump", false, "Dump merged config only, without launching Xray server.")
@@ -69,6 +73,7 @@ var (
 
 func executeRun(cmd *base.Command, args []string) {
 	if *dump {
+		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？
 		clog.ReplaceWithSeverityLogger(clog.Severity_Warning)
 		errCode := dumpConfig()
 		os.Exit(errCode)
@@ -82,6 +87,7 @@ func executeRun(cmd *base.Command, args []string) {
 		os.Exit(23)
 	}
 
+	// test参数表示仅检查config.json格式，不启动server。实际上配置格式的检查在startXray里面执行
 	if *test {
 		fmt.Println("Configuration OK.")
 		os.Exit(0)
