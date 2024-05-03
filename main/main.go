@@ -20,6 +20,7 @@ func main() {
 	// 这里再在切片开头增加run和version命令
 	// 每个命令有对应的init函数，会对命令结构体的内容进行填充
 	// 最底层的命令会有对应的execute函数，在init阶段会赋值给命令结构体的Run字段，不是最底层命令，Commands切片填充支持的子命令
+	// 主要分析下run命令（跳转main/run.go查看）
 	base.RootCommand.Commands = append(
 		[]*base.Command{
 			cmdRun,
