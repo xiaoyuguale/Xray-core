@@ -43,6 +43,7 @@ func NewLogger(logWriterCreator WriterCreator) Handler {
 }
 
 func ReplaceWithSeverityLogger(serverity Severity) {
+	// 返回一个函数，这个函数调用后会返回一个自定义结构体，结构体有一个*log.Logger的成员（调用标准库log.New生成）
 	w := CreateStdoutLogWriter()
 	g := &generalLogger{
 		creator: w,
@@ -146,6 +147,9 @@ func (w *fileLogWriter) Close() error {
 func CreateStdoutLogWriter() WriterCreator {
 	return func() Writer {
 		return &consoleLogWriter{
+			// 参数1：日志写入目的地
+			// 参数2：每条日志的前缀
+			// 参数3：日志属性
 			logger: log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds),
 		}
 	}

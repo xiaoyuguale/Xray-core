@@ -72,6 +72,7 @@ var (
 )
 
 func executeRun(cmd *base.Command, args []string) {
+	// -dump参数表示合并所有配置并打印，然后退出程序
 	if *dump {
 		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？
 		clog.ReplaceWithSeverityLogger(clog.Severity_Warning)
@@ -160,21 +161,25 @@ func readConfDir(dirPath string) {
 		log.Fatalln(err)
 	}
 	for _, f := range confs {
+		// getRegepxByFormat根据-format参数返回一个正则表达式，用来匹配符合格式的文件
 		matched, err := regexp.MatchString(getRegepxByFormat(), f.Name())
 		if err != nil {
 			log.Fatalln(err)
 		}
 		if matched {
+			// 把符合的文件名保存到变量configFiles（cmdarg.Arg类型，实际上是字符串切片）
 			configFiles.Set(path.Join(dirPath, f.Name()))
 		}
 	}
 }
 
 func getConfigFilePath(verbose bool) cmdarg.Arg {
+	// 判断configDir是否存在，存在的话，是否是目录
 	if dirExists(configDir) {
 		if verbose {
 			log.Println("Using confdir from arg:", configDir)
 		}
+		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles
 		readConfDir(configDir)
 	} else if envConfDir := platform.GetConfDirPath(); dirExists(envConfDir) {
 		if verbose {
