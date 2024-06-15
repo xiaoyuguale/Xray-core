@@ -36,11 +36,12 @@ type EnvFlag struct {
 func NewEnvFlag(name string) EnvFlag {
 	return EnvFlag{
 		Name:    name,
-		AltName: NormalizeEnvName(name),
+		AltName: NormalizeEnvName(name), // 使用strings方法处理name，查看NormalizeEnvName的定义
 	}
 }
 
 func (f EnvFlag) GetValue(defaultValue func() string) string {
+	// os.LookupEnv：查找环境变量，如果环境变量存在，返回环境变量的值和true，否则返回空字符串和false
 	if v, found := os.LookupEnv(f.Name); found {
 		return v
 	}
@@ -50,6 +51,7 @@ func (f EnvFlag) GetValue(defaultValue func() string) string {
 		}
 	}
 
+	// 返回defaultValue()的结果，根据GetConfDirPath()传入的结果，这里应该是返回空字符串
 	return defaultValue()
 }
 
@@ -70,6 +72,9 @@ func (f EnvFlag) GetValueAsInt(defaultValue int) int {
 }
 
 func NormalizeEnvName(name string) string {
+	// strings.TrimSpace：删除字符串s开头和结尾的空白字符，不包括中间的空白字符，类似Python的strip()
+	// strings.ToUpper：将字符串s的所有字符修改为大写形式
+	// strings.ReplaceAll：将字符串s中的old字符串全部替换为new字符串
 	return strings.ReplaceAll(strings.ToUpper(strings.TrimSpace(name)), ".", "_")
 }
 
@@ -88,6 +93,7 @@ func GetConfigurationPath() string {
 
 // GetConfDirPath reads "xray.location.confdir"
 func GetConfDirPath() string {
+	// ConfdirLocation是一个常量，通过GetValue获取环境变量指向的路径，查看GetValue的定义
 	configPath := NewEnvFlag(ConfdirLocation).GetValue(func() string { return "" })
 	return configPath
 }

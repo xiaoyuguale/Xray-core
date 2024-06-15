@@ -74,8 +74,9 @@ var (
 func executeRun(cmd *base.Command, args []string) {
 	// -dump参数表示合并所有配置并打印，然后退出程序
 	if *dump {
-		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？
+		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？（跳转common/log/logger.go查看）
 		clog.ReplaceWithSeverityLogger(clog.Severity_Warning)
+		// 查看dumpConfig的定义
 		errCode := dumpConfig()
 		os.Exit(errCode)
 	}
@@ -118,6 +119,7 @@ func executeRun(cmd *base.Command, args []string) {
 }
 
 func dumpConfig() int {
+	// 获取所有config文件，查看getConfigFilePath的定义
 	files := getConfigFilePath(false)
 	if config, err := core.GetMergedConfig(files); err != nil {
 		fmt.Println(err)
@@ -181,13 +183,16 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 		}
 		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles
 		readConfDir(configDir)
+	// 如果configDir不存在或者不是目录，就从环境变量中获取config路径，并且判断是否目录
 	} else if envConfDir := platform.GetConfDirPath(); dirExists(envConfDir) {
 		if verbose {
 			log.Println("Using confdir from env:", envConfDir)
 		}
+		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles
 		readConfDir(envConfDir)
 	}
 
+	// 如果configFiles有多个，直接返回
 	if len(configFiles) > 0 {
 		return configFiles
 	}
