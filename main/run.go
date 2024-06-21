@@ -183,7 +183,7 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 		}
 		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles
 		readConfDir(configDir)
-	// 如果configDir不存在或者不是目录，就从环境变量中获取config路径，并且判断是否目录
+		// 如果configDir不存在或者不是目录，就从环境变量中获取config路径，并且判断是否目录，跳转common/platform/platform.go查看GetConfDirPath的定义
 	} else if envConfDir := platform.GetConfDirPath(); dirExists(envConfDir) {
 		if verbose {
 			log.Println("Using confdir from env:", envConfDir)
@@ -197,10 +197,14 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 		return configFiles
 	}
 
+	// 如果没有使用参数指定配置文件，优先使用当前工作目录下的config.json
+	// 一般是在xray-core目录下执行./xray会进入下面的逻辑
 	if workingDir, err := os.Getwd(); err == nil {
 		suffixes := []string{".json", ".jsonc", ".toml", ".yaml", ".yml"}
 		for _, suffix := range suffixes {
+			// 工作目录下的config.json的绝对路径保存为configFile
 			configFile := filepath.Join(workingDir, "config"+suffix)
+			// 判断configFile是否存在，存在的话，是否不是目录
 			if fileExists(configFile) {
 				if verbose {
 					log.Println("Using default config: ", configFile)
@@ -210,6 +214,8 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 		}
 	}
 
+	// 如果在~目录下执行，会进入下面的逻辑
+	// 获取到与xray程序相同目录下的config.json，保存为configFile，并且判断是否不是目录，跳转common/platform/platform.go查看GetConfigurationPath的定义
 	if configFile := platform.GetConfigurationPath(); fileExists(configFile) {
 		if verbose {
 			log.Println("Using config from env: ", configFile)
@@ -220,6 +226,7 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 	if verbose {
 		log.Println("Using config from STDIN")
 	}
+	// 如果前面的方式都没法获取配置，就从stdin获取
 	return cmdarg.Arg{"stdin:"}
 }
 
