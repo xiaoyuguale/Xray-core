@@ -51,7 +51,7 @@ func (f EnvFlag) GetValue(defaultValue func() string) string {
 		}
 	}
 
-	// 返回defaultValue()的结果，根据GetConfDirPath()传入的结果，这里应该是返回空字符串
+	// 返回defaultValue调用后的结果，每次调用GetValue，传入的defaultValue函数都可能不同
 	return defaultValue()
 }
 
@@ -79,21 +79,24 @@ func NormalizeEnvName(name string) string {
 }
 
 func getExecutableDir() string {
+	// os.Executable()获取当前执行程序的绝对路径（包含程序名）
 	exec, err := os.Executable()
 	if err != nil {
 		return ""
 	}
+	// 返回不包含程序名的绝对路径，相当于Python的os.path.dirname
 	return filepath.Dir(exec)
 }
 
 func GetConfigurationPath() string {
+	// ConfigLocation是一个常量，通过GetValue获取环境变量指向的路径，查看这里传入的getExecutableDir的定义
 	configPath := NewEnvFlag(ConfigLocation).GetValue(getExecutableDir)
 	return filepath.Join(configPath, "config.json")
 }
 
 // GetConfDirPath reads "xray.location.confdir"
 func GetConfDirPath() string {
-	// ConfdirLocation是一个常量，通过GetValue获取环境变量指向的路径，查看GetValue的定义
+	// ConfdirLocation是一个常量，通过GetValue获取环境变量指向的路径，查看GetValue的定义，这里传入的defaultValue函数是返回空字符串
 	configPath := NewEnvFlag(ConfdirLocation).GetValue(func() string { return "" })
 	return configPath
 }
