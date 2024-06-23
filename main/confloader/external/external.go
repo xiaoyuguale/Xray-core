@@ -3,8 +3,8 @@ package external
 import (
 	"bytes"
 	"context"
-	"net"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,12 +22,15 @@ func ConfigLoader(arg string) (out io.Reader, err error) {
 	case strings.HasPrefix(arg, "http+unix://"):
 		data, err = FetchUnixSocketHTTPContent(arg)
 
+	// 从指定url读取数据，保存到字节切片
 	case strings.HasPrefix(arg, "http://"), strings.HasPrefix(arg, "https://"):
 		data, err = FetchHTTPContent(arg)
 
+	// 从stdin读取数据，保存到字节切片
 	case arg == "stdin:":
 		data, err = io.ReadAll(os.Stdin)
 
+	// 从文件读取数据，保存到字节切片
 	default:
 		data, err = os.ReadFile(arg)
 	}
@@ -35,6 +38,7 @@ func ConfigLoader(arg string) (out io.Reader, err error) {
 	if err != nil {
 		return
 	}
+	// bytes.NewBuffer：从一个字节切片，构造一个buffer，Buffer类型有一个Read方法，实现了io.Reader接口
 	out = bytes.NewBuffer(data)
 	return
 }
@@ -77,13 +81,13 @@ func FetchHTTPContent(target string) ([]byte, error) {
 // Format: http+unix:///path/to/socket.sock/api/endpoint
 func FetchUnixSocketHTTPContent(target string) ([]byte, error) {
 	path := strings.TrimPrefix(target, "http+unix://")
-	
+
 	if !strings.HasPrefix(path, "/") {
 		return nil, errors.New("unix socket path must be absolute")
 	}
-	
+
 	var socketPath, httpPath string
-	
+
 	sockIdx := strings.Index(path, ".sock")
 	if sockIdx != -1 {
 		socketPath = path[:sockIdx+5]
@@ -94,11 +98,11 @@ func FetchUnixSocketHTTPContent(target string) ([]byte, error) {
 	} else {
 		return nil, errors.New("cannot determine socket path, socket file should have .sock extension")
 	}
-	
+
 	if _, err := os.Stat(socketPath); err != nil {
 		return nil, errors.New("socket file not found: ", socketPath).Base(err)
 	}
-	
+
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
@@ -109,22 +113,22 @@ func FetchUnixSocketHTTPContent(target string) ([]byte, error) {
 		},
 	}
 	defer client.CloseIdleConnections()
-	
+
 	resp, err := client.Get("http://localhost" + httpPath)
 	if err != nil {
 		return nil, errors.New("failed to fetch from unix socket: ", socketPath).Base(err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		return nil, errors.New("unexpected HTTP status code: ", resp.StatusCode)
 	}
-	
+
 	content, err := buf.ReadAllToBytes(resp.Body)
 	if err != nil {
 		return nil, errors.New("failed to read response").Base(err)
 	}
-	
+
 	return content, nil
 }
 

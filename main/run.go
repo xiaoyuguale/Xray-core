@@ -121,6 +121,7 @@ func executeRun(cmd *base.Command, args []string) {
 func dumpConfig() int {
 	// 获取所有config文件，查看getConfigFilePath的定义
 	files := getConfigFilePath(false)
+	// files是一个字符串切片，传入files给GetMergedConfig合并所有config，跳转core/config.go查看GetMergedConfig的定义
 	if config, err := core.GetMergedConfig(files); err != nil {
 		fmt.Println(err)
 		time.Sleep(1 * time.Second)
@@ -198,7 +199,6 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 	}
 
 	// 如果没有使用参数指定配置文件，优先使用当前工作目录下的config.json
-	// 一般是在xray-core目录下执行./xray会进入下面的逻辑
 	if workingDir, err := os.Getwd(); err == nil {
 		suffixes := []string{".json", ".jsonc", ".toml", ".yaml", ".yml"}
 		for _, suffix := range suffixes {
@@ -207,6 +207,7 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 			// 判断configFile是否存在，存在的话，是否不是目录
 			if fileExists(configFile) {
 				if verbose {
+					fmt.Println("提示：当前工作目录存在config.json，直接使用")
 					log.Println("Using default config: ", configFile)
 				}
 				return cmdarg.Arg{configFile}
@@ -214,16 +215,18 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 		}
 	}
 
-	// 如果在~目录下执行，会进入下面的逻辑
+	// 如果当前工作目录没有config.json，会进入下面的逻辑
 	// 获取到与xray程序相同目录下的config.json，保存为configFile，并且判断是否不是目录，跳转common/platform/platform.go查看GetConfigurationPath的定义
 	if configFile := platform.GetConfigurationPath(); fileExists(configFile) {
 		if verbose {
+			fmt.Println("提示：当前工作目录不存在config.json，xray程序所在目录存在config.json，使用xray目录的config.json")
 			log.Println("Using config from env: ", configFile)
 		}
 		return cmdarg.Arg{configFile}
 	}
 
 	if verbose {
+		fmt.Println("提示：当前工作目录不存在config.json，xray程序所在目录也不存在config.json，从stdin获取config")
 		log.Println("Using config from STDIN")
 	}
 	// 如果前面的方式都没法获取配置，就从stdin获取
