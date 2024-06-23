@@ -56,9 +56,12 @@ func RegisterConfigLoader(format *ConfigFormat) error {
 func GetMergedConfig(args cmdarg.Arg) (string, error) {
 	files := make([]string, 0)
 	formats := make([]string, 0)
+	// 定义字符串切片，表示支持的文件格式
 	supported := []string{"json", "yaml", "toml"}
 	for _, file := range args {
+		// 根据文件名获取文件格式，查看getFormat的定义
 		format := getFormat(file)
+		// 遍历supported，当文件格式支持时，把文件名追加到切片files，把对应的文件格式追加到切片formats
 		for _, s := range supported {
 			if s == format {
 				files = append(files, file)
@@ -67,10 +70,14 @@ func GetMergedConfig(args cmdarg.Arg) (string, error) {
 			}
 		}
 	}
+	// 返回ConfigMergedFormFiles的执行结果，传入参数是文件切片和文件格式切片，查看ConfigMergedFormFiles的定义
+	// 注意，ConfigMergedFormFiles是一个函数类型的变量，需要给他赋值一个函数定义后，才能调用
+	// 搜索后发现，应该是在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
 	return ConfigMergedFormFiles(files, formats)
 }
 
 func GetFormatByExtension(ext string) string {
+	// strings.ToLower：转换字符串s的每个字符为小写
 	switch strings.ToLower(ext) {
 	case "pb", "protobuf":
 		return "protobuf"
@@ -86,14 +93,18 @@ func GetFormatByExtension(ext string) string {
 }
 
 func getExtension(filename string) string {
+	// strings.LastIndexByte：返回字符串s中字符c最后一个出现的位置，如果字符c不存在，就返回-1
 	idx := strings.LastIndexByte(filename, '.')
 	if idx == -1 {
 		return ""
 	}
+	// 从字符c的index+1获取到字符串最后，就是文件的扩展名
 	return filename[idx+1:]
 }
 
 func getFormat(filename string) string {
+	// getExtension函数获取文件名的扩展名，查看getExtension的定义
+	// GetFormatByExtension根据扩展名返回定义的文件格式，查看GetFormatByExtension的定义
 	return GetFormatByExtension(getExtension(filename))
 }
 

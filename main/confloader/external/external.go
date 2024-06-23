@@ -19,12 +19,15 @@ import (
 func ConfigLoader(arg string) (out io.Reader, err error) {
 	var data []byte
 	switch {
+	// 从指定url读取数据，保存到字节切片
 	case strings.HasPrefix(arg, "http://"), strings.HasPrefix(arg, "https://"):
 		data, err = FetchHTTPContent(arg)
 
+	// 从stdin读取数据，保存到字节切片
 	case arg == "stdin:":
 		data, err = io.ReadAll(os.Stdin)
 
+	// 从文件读取数据，保存到字节切片
 	default:
 		data, err = os.ReadFile(arg)
 	}
@@ -32,6 +35,7 @@ func ConfigLoader(arg string) (out io.Reader, err error) {
 	if err != nil {
 		return
 	}
+	// bytes.NewBuffer：从一个字节切片，构造一个buffer，Buffer类型有一个Read方法，实现了io.Reader接口
 	out = bytes.NewBuffer(data)
 	return
 }
