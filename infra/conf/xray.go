@@ -386,6 +386,8 @@ func (c *Config) findOutboundTag(tag string) int {
 func (c *Config) Override(o *Config, fn string) {
 	// only process the non-deprecated members
 
+	// 以Config的属性为单位，当传入的Config对象的属性不为空，就用新的属性覆盖原来Config对象的相同属性
+	// InboundConfigs和OutboundConfigs属性除外
 	if o.LogConfig != nil {
 		c.LogConfig = o.LogConfig
 	}
@@ -432,12 +434,16 @@ func (c *Config) Override(o *Config, fn string) {
 
 	// update the Inbound in slice if the only one in override config has same tag
 	if len(o.InboundConfigs) > 0 {
+		// 遍历传入的InboundConfigs的项
 		for i := range o.InboundConfigs {
+			// 在原来的InboundConfigs中查找符合tag的项，存在的话返回索引，不存在返回-1
 			if idx := c.findInboundTag(o.InboundConfigs[i].Tag); idx > -1 {
+				// 存在的话，用传入的tag项覆盖原来的tag项
 				c.InboundConfigs[idx] = o.InboundConfigs[i]
 				errors.LogInfo(context.Background(), "[", fn, "] updated inbound with tag: ", o.InboundConfigs[i].Tag)
 
 			} else {
+				// 不存在的话，在原来的InboundConfigs中追加这个tag项
 				c.InboundConfigs = append(c.InboundConfigs, o.InboundConfigs[i])
 				errors.LogInfo(context.Background(), "[", fn, "] appended inbound with tag: ", o.InboundConfigs[i].Tag)
 			}

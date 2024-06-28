@@ -12,11 +12,13 @@ import (
 )
 
 func MergeConfigFromFiles(files []*core.ConfigSource) (string, error) {
+	// 这里返回一个合并好的*conf.Config对象
 	c, err := mergeConfigs(files)
 	if err != nil {
 		return "", err
 	}
 
+	// 对Config对象进行序列化，跳转common/reflect/marshal.go查看MarshalToJson的定义
 	if j, ok := creflect.MarshalToJson(c, true); ok {
 		return j, nil
 	}
@@ -41,12 +43,15 @@ func mergeConfigs(files []*core.ConfigSource) (*conf.Config, error) {
 		if err != nil {
 			return nil, errors.New("failed to decode config: ", file).Base(err)
 		}
+		// i==0表示解析第一个文件，直接把返回的Config对象保存到cf
 		if i == 0 {
 			*cf = *c
 			continue
 		}
+		// 后续每解析一个文件，都会和cf进行合并，跳转infra/conf/xray.go查看Override的定义
 		cf.Override(c, file.Name)
 	}
+	// 返回合并好的Config对象
 	return cf, nil
 }
 
