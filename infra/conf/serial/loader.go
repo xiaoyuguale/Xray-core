@@ -45,12 +45,16 @@ func findOffset(b []byte, o int) *offset {
 func DecodeJSONConfig(reader io.Reader) (*conf.Config, error) {
 	jsonConfig := &conf.Config{}
 
+	// 创建指定容量的buffer，默认是64
 	jsonContent := bytes.NewBuffer(make([]byte, 0, 10240))
+	// io.TeeReader：传入一个Reader和一个Writer，返回一个teeReader对象，当读取teeReader对象的内容时，会无缓冲的将读取内容写到Writer中
+	// 这里写入jsonContent主要是为了反序列化出错的时候，获取到出错的字符和行数
 	jsonReader := io.TeeReader(&json_reader.Reader{
 		Reader: reader,
 	}, jsonContent)
 	decoder := json.NewDecoder(jsonReader)
 
+	// 把config数据流反序列化到变量jsonConfig，jsonConfig是一个*conf.Config结构体类型的变量，跳转infra/conf/xray.go查看结构体Config的定义
 	if err := decoder.Decode(jsonConfig); err != nil {
 		var pos *offset
 		cause := errors.Cause(err)
@@ -66,6 +70,7 @@ func DecodeJSONConfig(reader io.Reader) (*conf.Config, error) {
 		return nil, errors.New("failed to read config file").Base(err)
 	}
 
+	// 返回反序列化成功的*conf.Config类型的结构体
 	return jsonConfig, nil
 }
 

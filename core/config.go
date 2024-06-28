@@ -38,6 +38,7 @@ var (
 	configLoaderByName    = make(map[string]*ConfigFormat)
 	configLoaderByExt     = make(map[string]*ConfigFormat)
 	ConfigBuilderForFiles ConfigBuilder
+	// 在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
 	ConfigMergedFormFiles ConfigsMerger
 )
 
