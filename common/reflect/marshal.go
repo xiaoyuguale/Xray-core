@@ -13,6 +13,7 @@ import (
 )
 
 func MarshalToJson(v interface{}, insertTypeInfo bool) (string, bool) {
+	// 查看marshalInterface的定义
 	if itf := marshalInterface(v, true, insertTypeInfo); itf != nil {
 		if b, err := JSONMarshalWithoutEscape(itf); err == nil {
 			return string(b[:]), true
@@ -164,6 +165,7 @@ func serializePortList(portList *cnet.PortList) (interface{}, bool) {
 }
 
 func marshalKnownType(v interface{}, ignoreNullValue bool, insertTypeInfo bool) (interface{}, bool) {
+	// type-switch：判断某个interface变量中实际存储的变量类型
 	switch ty := v.(type) {
 	case cserial.TypedMessage:
 		return marshalTypedMessage(&ty, ignoreNullValue, insertTypeInfo), true
@@ -229,15 +231,23 @@ func isValueKind(kind reflect.Kind) bool {
 
 func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 
+	// marshalKnownType内部对v进行type-switch判断，返回识别出来的类型，查看marshalKnownType的定义
 	if r, ok := marshalKnownType(v, ignoreNullValue, insertTypeInfo); ok {
 		return r
 	}
 
+	// 由于conf.Config对象嵌套的类型很多，marshalKnownType无法识别的类型将进行下面的处理
+	// reflect.ValueOf可以获取interface的值的信息，返回reflect.Value类型的变量
 	rv := reflect.ValueOf(v)
+	// reflect.Value.Kind可以获取Value所属的基本类型（int，bool，pointer等等）
 	if rv.Kind() == reflect.Ptr {
+		// 如果Value的基本类型是指针，可以通过Elem方法获取指针指向的具体值
 		rv = rv.Elem()
 	}
+	// 更新完rv的值，在获取kind
 	k := rv.Kind()
+	// 创建reflect.Value有很多方法，就算创建的时候传入的是一个无效值也不会报错
+	// 如果Value的kind是Invalid，表示这个reflect.Value是无效的
 	if k == reflect.Invalid {
 		return nil
 	}
@@ -253,6 +263,7 @@ func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) 
 
 	// fmt.Println("kind:", k, "type:", rv.Type().Name())
 
+	// k是基本类型（struct，slice，array等），根据k的值选择不同的处理
 	switch k {
 	case reflect.Struct:
 		return marshalStruct(rv, ignoreNullValue, insertTypeInfo)
