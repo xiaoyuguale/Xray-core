@@ -85,6 +85,7 @@ func ExtConfigLoader(files []string, reader io.Reader) (io.Reader, error) {
 }
 
 func init() {
+	// 查看ConfigLoader的定义
 	confloader.EffectiveConfigFileLoader = ConfigLoader
 	confloader.EffectiveExtConfigLoader = ExtConfigLoader
 }

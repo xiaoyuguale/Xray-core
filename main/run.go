@@ -50,7 +50,7 @@ var (
 	// cmdarg.Arg是一个string类型的切片，用来实现对多个config参数的支持，xray run -c abc -c xyz
 	// flag包默认只能解析基本类型的参数，int，string，bool等，但是提供了flag.Var函数用于对自定义类型进行解析
 	// flag.Var的value参数是一个flag.Value接口类型，有String和Set方法（实现了接口的方法，就是实现了这个接口）
-	// cmdarg.Arg实现了String和Set方法，用于把所有解析到的config参数存储到configFiles这个string类型的切片（跳转common/cmdarg/cmdarg.go查看）
+	// cmdarg.Arg实现了String和Set方法，用于把所有解析到的config参数存储到configFiles这个string类型的切片（跳转common/cmdarg/cmdarg.go查看String和Set的定义）
 	configFiles cmdarg.Arg // "Config file for Xray.", the option is customed type, parse in main
 	configDir   string
 	dump        = cmdRun.Flag.Bool("dump", false, "Dump merged config only, without launching Xray server.")
@@ -72,7 +72,7 @@ var (
 func executeRun(cmd *base.Command, args []string) {
 	// -dump参数表示合并所有配置并打印，然后退出程序
 	if *dump {
-		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？（跳转common/log/logger.go查看）
+		// 这里Logger的一系列操作没看懂，可能是创建一个为dumpConfig服务的Logger对象？（跳转common/log/logger.go查看ReplaceWithSeverityLogger的定义）
 		clog.ReplaceWithSeverityLogger(clog.Severity_Warning)
 		// 查看dumpConfig的定义
 		errCode := dumpConfig()
@@ -162,7 +162,7 @@ func readConfDir(dirPath string) {
 		log.Fatalln(err)
 	}
 	for _, f := range confs {
-		// getRegepxByFormat根据-format参数返回一个正则表达式，用来匹配符合格式的文件
+		// getRegepxByFormat根据-format参数返回一个正则表达式，用来匹配符合格式的文件，查看getRegepxByFormat的定义
 		matched, err := regexp.MatchString(getRegepxByFormat(), f.Name())
 		if err != nil {
 			log.Fatalln(err)
@@ -175,12 +175,12 @@ func readConfDir(dirPath string) {
 }
 
 func getConfigFilePath(verbose bool) cmdarg.Arg {
-	// 判断configDir是否存在，存在的话，是否是目录
+	// 判断configDir是否存在，存在的话，是否是目录，查看dirExists的定义
 	if dirExists(configDir) {
 		if verbose {
 			log.Println("Using confdir from arg:", configDir)
 		}
-		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles
+		// 如果是目录，读取目录内指定format的文件名，保存到变量configFiles，查看readConfDir的定义
 		readConfDir(configDir)
 		// 如果configDir不存在或者不是目录，就从环境变量中获取config路径，并且判断是否目录，跳转common/platform/platform.go查看GetConfDirPath的定义
 	} else if envConfDir := platform.GetConfDirPath(); dirExists(envConfDir) {
@@ -200,7 +200,7 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 	if workingDir, err := os.Getwd(); err == nil {
 		// 工作目录下的config.json的绝对路径保存为configFile
 		configFile := filepath.Join(workingDir, "config.json")
-		// 判断configFile是否存在，存在的话，是否不是目录
+		// 判断configFile是否存在，存在的话，是否不是目录，查看fileExists的定义
 		if fileExists(configFile) {
 			if verbose {
 				fmt.Println("提示：当前工作目录存在config.json，直接使用")
