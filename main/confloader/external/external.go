@@ -133,5 +133,6 @@ func FetchUnixSocketHTTPContent(target string) ([]byte, error) {
 }
 
 func init() {
+	// 查看ConfigLoader的定义
 	confloader.EffectiveConfigFileLoader = ConfigLoader
 }
