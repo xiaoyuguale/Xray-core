@@ -4,9 +4,7 @@ import (
 	"context"
 	gotls "crypto/tls"
 	"io"
-	gonet "net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"sync"
@@ -14,11 +12,12 @@ import (
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
+	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
-	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/common/signal/semaphore"
 	"github.com/xtls/xray-core/common/uuid"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/browser_dialer"
 	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/internet/tls"
 	"github.com/xtls/xray-core/transport/pipe"
@@ -30,45 +29,33 @@ type dialerConf struct {
 	*internet.MemoryStreamConfig
 }
 
-type reusedClient struct {
-	download *http.Client
-	upload   *http.Client
-	isH2     bool
-	// pool of net.Conn, created using dialUploadConn
-	uploadRawPool  *sync.Pool
-	dialUploadConn func(ctxInner context.Context) (net.Conn, error)
-}
-
 var (
-	globalDialerMap    map[dialerConf]reusedClient
+	globalDialerMap    map[dialerConf]DialerClient
 	globalDialerAccess sync.Mutex
 )
 
-func destroyHTTPClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) {
-	globalDialerAccess.Lock()
-	defer globalDialerAccess.Unlock()
-
-	if globalDialerMap == nil {
-		globalDialerMap = make(map[dialerConf]reusedClient)
+func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) DialerClient {
+	if browser_dialer.HasBrowserDialer() {
+		return &BrowserDialerClient{}
 	}
 
-	delete(globalDialerMap, dialerConf{dest, streamSettings})
-
-}
-
-func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) reusedClient {
 	globalDialerAccess.Lock()
 	defer globalDialerAccess.Unlock()
 
 	if globalDialerMap == nil {
-		globalDialerMap = make(map[dialerConf]reusedClient)
+		globalDialerMap = make(map[dialerConf]DialerClient)
 	}
 
 	if client, found := globalDialerMap[dialerConf{dest, streamSettings}]; found {
 		return client
 	}
 
+	if browser_dialer.HasBrowserDialer() {
+		return &BrowserDialerClient{}
+	}
+
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
+	isH2 := tlsConfig != nil && !(len(tlsConfig.NextProtocol) == 1 && tlsConfig.NextProtocol[0] == "http/1.1")
 
 	var gotlsConfig *gotls.Config
 
@@ -77,7 +64,7 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 	}
 
 	dialContext := func(ctxInner context.Context) (net.Conn, error) {
-		conn, err := internet.DialSystem(ctx, dest, streamSettings.SocketSettings)
+		conn, err := internet.DialSystem(ctxInner, dest, streamSettings.SocketSettings)
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +72,7 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 		if gotlsConfig != nil {
 			if fingerprint := tls.GetFingerprint(tlsConfig.Fingerprint); fingerprint != nil {
 				conn = tls.UClient(conn, gotlsConfig, fingerprint)
-				if err := conn.(*tls.UConn).HandshakeContext(ctx); err != nil {
+				if err := conn.(*tls.UConn).HandshakeContext(ctxInner); err != nil {
 					return nil, err
 				}
 			} else {
@@ -99,7 +86,7 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 	var uploadTransport http.RoundTripper
 	var downloadTransport http.RoundTripper
 
-	if tlsConfig != nil {
+	if isH2 {
 		downloadTransport = &http2.Transport{
 			DialTLSContext: func(ctxInner context.Context, network string, addr string, cfg *gotls.Config) (net.Conn, error) {
 				return dialContext(ctxInner)
@@ -125,14 +112,15 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 		uploadTransport = nil
 	}
 
-	client := reusedClient{
+	client := &DefaultDialerClient{
+		transportConfig: streamSettings.ProtocolSettings.(*Config),
 		download: &http.Client{
 			Transport: downloadTransport,
 		},
 		upload: &http.Client{
 			Transport: uploadTransport,
 		},
-		isH2:           tlsConfig != nil,
+		isH2:           isH2,
 		uploadRawPool:  &sync.Pool{},
 		dialUploadConn: dialContext,
 	}
@@ -146,7 +134,7 @@ func init() {
 }
 
 func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (stat.Connection, error) {
-	newError("dialing splithttp to ", dest).WriteToLog(session.ExportIDToError(ctx))
+	errors.LogInfo(ctx, "dialing splithttp to ", dest)
 
 	var requestURL url.URL
 
@@ -169,51 +157,9 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	httpClient := getHTTPClient(ctx, dest, streamSettings)
 
-	var remoteAddr gonet.Addr
-	var localAddr gonet.Addr
-
-	trace := &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr = connInfo.Conn.RemoteAddr()
-			localAddr = connInfo.Conn.LocalAddr()
-		},
-	}
-
 	sessionIdUuid := uuid.New()
 	sessionId := sessionIdUuid.String()
-
-	req, err := http.NewRequestWithContext(
-		httptrace.WithClientTrace(ctx, trace),
-		"GET",
-		requestURL.String()+"?session="+sessionId,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header = transportConfiguration.GetRequestHeader()
-
-	downResponse, err := httpClient.download.Do(req)
-	if err != nil {
-		// workaround for various connection pool related issues, mostly around
-		// HTTP/1.1. if the http client ever fails to send a request, we simply
-		// delete it entirely.
-		// in HTTP/1.1, it was observed that pool connections would immediately
-		// fail with "context canceled" if the previous http response body was
-		// not explicitly BOTH drained and closed. at the same time, sometimes
-		// the draining itself takes forever and causes more problems.
-		// see also https://github.com/golang/go/issues/60240
-		destroyHTTPClient(ctx, dest, streamSettings)
-		return nil, newError("failed to send download http request, destroying client").Base(err)
-	}
-
-	if downResponse.StatusCode != 200 {
-		downResponse.Body.Close()
-		return nil, newError("invalid status code on download:", downResponse.Status)
-	}
-
-	uploadUrl := requestURL.String() + "?session=" + sessionId + "&seq="
+	baseURL := requestURL.String() + sessionId
 
 	uploadPipeReader, uploadPipeWriter := pipe.New(pipe.WithSizeLimit(maxUploadSize))
 
@@ -232,73 +178,49 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 			<-requestsLimiter.Wait()
 
-			url := uploadUrl + strconv.FormatInt(requestCounter, 10)
+			seq := requestCounter
 			requestCounter += 1
 
 			go func() {
 				defer requestsLimiter.Signal()
-				req, err := http.NewRequest("POST", url, &buf.MultiBufferContainer{MultiBuffer: chunk})
+
+				err := httpClient.SendUploadRequest(
+					context.WithoutCancel(ctx),
+					baseURL+"/"+strconv.FormatInt(seq, 10),
+					&buf.MultiBufferContainer{MultiBuffer: chunk},
+					int64(chunk.Len()),
+				)
+
 				if err != nil {
-					newError("failed to send upload").Base(err).WriteToLog()
+					errors.LogInfoInner(ctx, err, "failed to send upload")
 					uploadPipeReader.Interrupt()
-					return
-				}
-
-				req.Header = transportConfiguration.GetRequestHeader()
-
-				if httpClient.isH2 {
-					resp, err := httpClient.upload.Do(req)
-					if err != nil {
-						newError("failed to send upload").Base(err).WriteToLog()
-						uploadPipeReader.Interrupt()
-						return
-					}
-					defer resp.Body.Close()
-
-					if resp.StatusCode != 200 {
-						newError("failed to send upload, bad status code:", resp.Status).WriteToLog()
-						uploadPipeReader.Interrupt()
-						return
-					}
-				} else {
-					var err error
-					var uploadConn any
-					for i := 0; i < 5; i++ {
-						uploadConn = httpClient.uploadRawPool.Get()
-						if uploadConn == nil {
-							uploadConn, err = httpClient.dialUploadConn(ctx)
-							if err != nil {
-								newError("failed to connect upload").Base(err).WriteToLog()
-								uploadPipeReader.Interrupt()
-								return
-							}
-						}
-
-						err = req.Write(uploadConn.(net.Conn))
-						if err == nil {
-							break
-						}
-					}
-
-					if err != nil {
-						newError("failed to send upload").Base(err).WriteToLog()
-						uploadPipeReader.Interrupt()
-						return
-					}
-
-					httpClient.uploadRawPool.Put(uploadConn)
 				}
 			}()
 
 		}
 	}()
 
-	// skip "ok" response
-	trashHeader := []byte{0, 0}
-	_, err = io.ReadFull(downResponse.Body, trashHeader)
+	lazyRawDownload, remoteAddr, localAddr, err := httpClient.OpenDownload(context.WithoutCancel(ctx), baseURL)
 	if err != nil {
-		downResponse.Body.Close()
-		return nil, newError("failed to read initial response")
+		return nil, err
+	}
+
+	lazyDownload := &LazyReader{
+		CreateReader: func() (io.ReadCloser, error) {
+			// skip "ooooooooook" response
+			trashHeader := []byte{0}
+			for {
+				_, err := io.ReadFull(lazyRawDownload, trashHeader)
+				if err != nil {
+					return nil, errors.New("failed to read initial response").Base(err)
+				}
+				if trashHeader[0] == 'k' {
+					break
+				}
+			}
+
+			return lazyRawDownload, nil
+		},
 	}
 
 	// necessary in order to send larger chunks in upload
@@ -307,7 +229,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	conn := splitConn{
 		writer:     bufferedUploadPipeWriter,
-		reader:     downResponse.Body,
+		reader:     lazyDownload,
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
 	}

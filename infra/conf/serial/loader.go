@@ -65,9 +65,9 @@ func DecodeJSONConfig(reader io.Reader) (*conf.Config, error) {
 			pos = findOffset(jsonContent.Bytes(), int(tErr.Offset))
 		}
 		if pos != nil {
-			return nil, newError("failed to read config file at line ", pos.line, " char ", pos.char).Base(err)
+			return nil, errors.New("failed to read config file at line ", pos.line, " char ", pos.char).Base(err)
 		}
-		return nil, newError("failed to read config file").Base(err)
+		return nil, errors.New("failed to read config file").Base(err)
 	}
 
 	// 返回反序列化成功的*conf.Config类型的结构体
@@ -82,7 +82,7 @@ func LoadJSONConfig(reader io.Reader) (*core.Config, error) {
 
 	pbConfig, err := jsonConfig.Build()
 	if err != nil {
-		return nil, newError("failed to parse json config").Base(err)
+		return nil, errors.New("failed to parse json config").Base(err)
 	}
 
 	return pbConfig, nil
@@ -93,17 +93,17 @@ func LoadJSONConfig(reader io.Reader) (*core.Config, error) {
 func DecodeTOMLConfig(reader io.Reader) (*conf.Config, error) {
 	tomlFile, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, newError("failed to read config file").Base(err)
+		return nil, errors.New("failed to read config file").Base(err)
 	}
 
 	configMap := make(map[string]interface{})
 	if err := toml.Unmarshal(tomlFile, &configMap); err != nil {
-		return nil, newError("failed to convert toml to map").Base(err)
+		return nil, errors.New("failed to convert toml to map").Base(err)
 	}
 
 	jsonFile, err := json.Marshal(&configMap)
 	if err != nil {
-		return nil, newError("failed to convert map to json").Base(err)
+		return nil, errors.New("failed to convert map to json").Base(err)
 	}
 
 	return DecodeJSONConfig(bytes.NewReader(jsonFile))
@@ -117,7 +117,7 @@ func LoadTOMLConfig(reader io.Reader) (*core.Config, error) {
 
 	pbConfig, err := tomlConfig.Build()
 	if err != nil {
-		return nil, newError("failed to parse toml config").Base(err)
+		return nil, errors.New("failed to parse toml config").Base(err)
 	}
 
 	return pbConfig, nil
@@ -128,12 +128,12 @@ func LoadTOMLConfig(reader io.Reader) (*core.Config, error) {
 func DecodeYAMLConfig(reader io.Reader) (*conf.Config, error) {
 	yamlFile, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, newError("failed to read config file").Base(err)
+		return nil, errors.New("failed to read config file").Base(err)
 	}
 
 	jsonFile, err := yaml.YAMLToJSON(yamlFile)
 	if err != nil {
-		return nil, newError("failed to convert yaml to json").Base(err)
+		return nil, errors.New("failed to convert yaml to json").Base(err)
 	}
 
 	return DecodeJSONConfig(bytes.NewReader(jsonFile))
@@ -147,7 +147,7 @@ func LoadYAMLConfig(reader io.Reader) (*core.Config, error) {
 
 	pbConfig, err := yamlConfig.Build()
 	if err != nil {
-		return nil, newError("failed to parse yaml config").Base(err)
+		return nil, errors.New("failed to parse yaml config").Base(err)
 	}
 
 	return pbConfig, nil
