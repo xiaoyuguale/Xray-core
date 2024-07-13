@@ -29,6 +29,8 @@ func mergeConfigs(files []string, formats []string) (*conf.Config, error) {
 	cf := &conf.Config{}
 	for i, file := range files {
 		errors.LogInfo(context.Background(), "Reading config: ", file)
+		// 跳转main/confloader/confloader.go查看LoadConfig的定义
+		// 这里LoadConfig返回的r是一个实现了io.Reader接口的Buffer类型
 		r, err := confloader.LoadConfig(file)
 		if err != nil {
 			return nil, errors.New("failed to read config: ", file).Base(err)
