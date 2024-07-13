@@ -386,8 +386,8 @@ func (c *Config) findOutboundTag(tag string) int {
 func (c *Config) Override(o *Config, fn string) {
 	// only process the non-deprecated members
 
-	// 以Config的属性为单位，当传入的Config对象的属性不为空，就用新的属性覆盖原来Config对象的相同属性
-	// InboundConfigs和OutboundConfigs属性除外
+	// 以conf.Config的字段为单位，当传入的Config结构体的字段不为空，就用新的字段的值覆盖原来Config结构体的相同字段
+	// InboundConfigs和OutboundConfigs字段除外（这两个字段是切片，需要比较切片的元素）
 	if o.LogConfig != nil {
 		c.LogConfig = o.LogConfig
 	}
@@ -434,11 +434,11 @@ func (c *Config) Override(o *Config, fn string) {
 
 	// update the Inbound in slice if the only one in override config has same tag
 	if len(o.InboundConfigs) > 0 {
-		// 遍历传入的InboundConfigs的项
+		// 遍历传入的InboundConfigs的元素
 		for i := range o.InboundConfigs {
-			// 在原来的InboundConfigs中查找符合tag的项，存在的话返回索引，不存在返回-1
+			// 在原来的InboundConfigs中查找tag相同的元素，存在的话返回索引，不存在返回-1
 			if idx := c.findInboundTag(o.InboundConfigs[i].Tag); idx > -1 {
-				// 存在的话，用传入的tag项覆盖原来的tag项
+				// 存在的话，用传入的tag元素覆盖idx位置的元素（即覆盖tag相同的元素）
 				c.InboundConfigs[idx] = o.InboundConfigs[i]
 				errors.LogInfo(context.Background(), "[", fn, "] updated inbound with tag: ", o.InboundConfigs[i].Tag)
 
@@ -452,22 +452,33 @@ func (c *Config) Override(o *Config, fn string) {
 	}
 
 	// update the Outbound in slice if the only one in override config has same tag
+	// 在 https://xtls.github.io/config/features/multiple.html 找到关于多文件启动的描述
+	// 查找原有 tag 相同的元素进行覆盖；若无法找到：
+	// 对于 inbounds，添加至最后（inbounds 内元素顺序无关）
+	// 对于 outbounds，添加至最前（outbounds 默认首选出口）；但如果文件名含有 tail（大小写均可），添加至最后。
 	if len(o.OutboundConfigs) > 0 {
 		outboundPrepends := []OutboundDetourConfig{}
 		for i := range o.OutboundConfigs {
 			if idx := c.findOutboundTag(o.OutboundConfigs[i].Tag); idx > -1 {
+				// tag相同元素存在的情况，和inbounds一样的逻辑
 				c.OutboundConfigs[idx] = o.OutboundConfigs[i]
 				errors.LogInfo(context.Background(), "[", fn, "] updated outbound with tag: ", o.OutboundConfigs[i].Tag)
 			} else {
 				if strings.Contains(strings.ToLower(fn), "tail") {
+					// fn是文件名（file name？），如果文件名包含tail，表示元素添加到最后
 					c.OutboundConfigs = append(c.OutboundConfigs, o.OutboundConfigs[i])
 					errors.LogInfo(context.Background(), "[", fn, "] appended outbound with tag: ", o.OutboundConfigs[i].Tag)
 				} else {
+					// 否则添加到最前
 					outboundPrepends = append(outboundPrepends, o.OutboundConfigs[i])
 					errors.LogInfo(context.Background(), "[", fn, "] prepend outbound with tag: ", o.OutboundConfigs[i].Tag)
 				}
 			}
 		}
+		// 这里为什么要又判断一次文件名是否不包含tail？
+		// 因为只有一个文件，如果文件名包含tail，那outboundPrepends一定是空
+		// 反之，如果文件名不包含tail，那outboundPrepends一定不为空
+		// 直接判断len(outboundPrepends)不行吗
 		if !strings.Contains(strings.ToLower(fn), "tail") && len(outboundPrepends) > 0 {
 			c.OutboundConfigs = append(outboundPrepends, c.OutboundConfigs...)
 		}

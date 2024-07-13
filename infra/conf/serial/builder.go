@@ -37,7 +37,7 @@ func mergeConfigs(files []*core.ConfigSource) (*conf.Config, error) {
 			return nil, errors.New("failed to read config: ", file).Base(err)
 		}
 		// commit_240623冲突，先保留下来，后面再分析
-		// ReaderDecoderByFormat是一个map类型，在init函数初始化，key是文件格式，value是一个对应格式的decode函数
+		// ReaderDecoderByFormat是一个map[string]readerDecoder类型，在init函数初始化，key是文件格式，value是一个对应格式的decode函数
 		// 这里根据文件类型找到对应的decode函数，传入buffer调用，以json为例，跳转infra/conf/serial/loader.go查看DecodeJSONConfig的定义
 		c, err := ReaderDecoderByFormat[file.Format](r)
 		if err != nil {
@@ -68,6 +68,7 @@ type readerDecoder func(io.Reader) (*conf.Config, error)
 var ReaderDecoderByFormat = make(map[string]readerDecoder)
 
 func init() {
+	// 查看各个Decode函数的定义
 	ReaderDecoderByFormat["json"] = DecodeJSONConfig
 	ReaderDecoderByFormat["yaml"] = DecodeYAMLConfig
 	ReaderDecoderByFormat["toml"] = DecodeTOMLConfig

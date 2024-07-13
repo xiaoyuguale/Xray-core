@@ -12,15 +12,15 @@ import (
 func main() {
 	os.Args = getArgsV4Compatible()
 
-	// base.RootCommand是*base.Command类型的全局变量，定义在main/commands/base/root.go中
+	// base.RootCommand是*base.Command类型的变量，跳转main/commands/base/root.go查看定义
 	// 导入main/commands/base时，main/commands/base/root.go的init函数会实例化一个base.Command类型的结构体，把结构体指针赋值给base.RootCommand
-	// *base.Command.Commands是一个*base.Command类型变量的切片（子命令的实现方式？）
-	// 在main/distro/all中会导入了main/commands/all，而main/commands/all/commands.go的init函数会为base.RootCommand.Commands追加5个命令（api，tls，uuid，x25519，wg，追加之前Commands列表为空）
+	// base.Command.Commands是一个*base.Command类型的切片（子命令的实现方式？）
+	// 在main/distro/all/all.go中会导入了main/commands/all，而main/commands/all/commands.go的init函数会为base.RootCommand.Commands追加5个命令（api，tls，uuid，x25519，wg，追加之前Commands切片为空）
 	base.RootCommand.Long = "Xray is a platform for building proxies."
 	// 这里再在切片开头增加run和version命令
 	// 每个命令有对应的init函数，会对命令结构体的内容进行填充
 	// 最底层的命令会有对应的execute函数，在init阶段会赋值给命令结构体的Run字段，不是最底层命令，Commands切片填充支持的子命令
-	// 主要分析下run命令（跳转main/run.go查看）
+	// 主要分析下run命令（跳转main/run.go查看定义）
 	base.RootCommand.Commands = append(
 		[]*base.Command{
 			cmdRun,
