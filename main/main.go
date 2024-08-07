@@ -6,7 +6,8 @@ import (
 	"os"
 
 	"github.com/xtls/xray-core/main/commands/base"
-	_ "github.com/xtls/xray-core/main/distro/all" // 下划线表示仅执行package的init函数
+	// 下划线表示导入package时仅执行init函数
+	_ "github.com/xtls/xray-core/main/distro/all"
 )
 
 func main() {
