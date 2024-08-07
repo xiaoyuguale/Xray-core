@@ -18,7 +18,11 @@ func MergeConfigFromFiles(files []*core.ConfigSource) (string, error) {
 		return "", err
 	}
 
-	// 对Config对象进行序列化，跳转common/reflect/marshal.go查看MarshalToJson的定义
+	// 对*conf.Configl类型的对象进行序列化，跳转common/reflect/marshal.go查看MarshalToJson的定义
+	// 这里为什么不直接调用json.MarshalIndent进行序列化，只知道空对象会保留，显示为null
+	// if j, err := json.MarshalIndent(c, "", "  "); err == nil {
+	// 	return string(j[:]), nil
+	// }
 	if j, ok := creflect.MarshalToJson(c, true); ok {
 		return j, nil
 	}
