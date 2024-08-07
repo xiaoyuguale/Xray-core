@@ -32,6 +32,7 @@ type DefaultDialerClient struct {
 	download        *http.Client
 	upload          *http.Client
 	isH2            bool
+	isH3            bool
 	// pool of net.Conn, created using dialUploadConn
 	uploadRawPool  *sync.Pool
 	dialUploadConn func(ctxInner context.Context) (net.Conn, error)
@@ -93,6 +94,10 @@ func (c *DefaultDialerClient) OpenDownload(ctx context.Context, baseURL string) 
 		gotDownResponse.Close()
 	}()
 
+	if c.isH3 {
+		gotConn.Close()
+	}
+
 	// we want to block Dial until we know the remote address of the server,
 	// for logging purposes
 	<-gotConn.Wait()
@@ -112,13 +117,13 @@ func (c *DefaultDialerClient) OpenDownload(ctx context.Context, baseURL string) 
 
 func (c *DefaultDialerClient) SendUploadRequest(ctx context.Context, url string, payload io.ReadWriteCloser, contentLength int64) error {
 	req, err := http.NewRequest("POST", url, payload)
-	req.ContentLength = contentLength
 	if err != nil {
 		return err
 	}
+	req.ContentLength = contentLength
 	req.Header = c.transportConfig.GetRequestHeader()
 
-	if c.isH2 {
+	if c.isH2 || c.isH3 {
 		resp, err := c.upload.Do(req)
 		if err != nil {
 			return err
