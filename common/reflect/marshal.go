@@ -127,12 +127,20 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) i
 
 func marshalMap(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 	// policy.level is map[uint32] *struct
+	// reflect.Type.Key：获取map的key的reflect.Type，如果反射值v对象的种类不是map，则会panic
 	kt := v.Type().Key()
+	// 通过reflect.TypeOf构造一个reflect.Type用来表示map的值的类型，并且需要map的值允许任何值，所以只能是interface{}
+	// 但是TypeOf接受nil interface时会返回nil（也就是TypeOf((interface{})(nil))的时候），所以这里需要使用*interface{}
 	vt := reflect.TypeOf((*interface{})(nil))
+	// reflect.MapOf：获取指定key和value类型的reflect.Type表示
 	mt := reflect.MapOf(kt, vt)
+	// reflect.MakeMap：获取指定reflect.Type的reflect.Value表示
 	r := reflect.MakeMap(mt)
+	// reflect.Value.MapKeys：获取反射值对象v的key的reflect.Value表示，以slice形式返回
 	for _, key := range v.MapKeys() {
+		// reflect.Value.MapIndex：相当于map[key]，不过是返回map[key]的reflect.Value的表示
 		rv := v.MapIndex(key)
+		// 遇到结构体，继续调用marshalInterface
 		if rv.CanInterface() {
 			iv := rv.Interface()
 			tv := marshalInterface(iv, ignoreNullValue, insertTypeInfo)
