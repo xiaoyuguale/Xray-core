@@ -11,28 +11,37 @@ import (
 	"github.com/xtls/xray-core/main/confloader"
 )
 
-func MergeConfigFromFiles(files []string, formats []string) (string, error) {
-	// 这里返回一个合并好的*conf.Config对象
-	c, err := mergeConfigs(files, formats)
+/*
+由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
+
+	func MergeConfigFromFiles(files []string, formats []string) (string, error) {
+		// 这里返回一个合并好的*conf.Config对象
+		c, err := mergeConfigs(files, formats)
+*/
+func MergeConfigFromFiles(files []*core.ConfigSource) (string, error) {
+	c, err := mergeConfigs(files)
 	if err != nil {
 		return "", err
 	}
 
-	// 对*conf.Configl类型的对象进行序列化，跳转common/reflect/marshal.go查看MarshalToJson的定义
-	// 这里为什么不直接调用json.MarshalIndent进行序列化，只知道空对象会保留，显示为null
-	// if j, err := json.MarshalIndent(c, "", "  "); err == nil {
-	// 	return string(j[:]), nil
-	// }
-	if j, ok := creflect.MarshalToJson(c); ok {
+	/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
+	   	// 对*conf.Configl类型的对象进行序列化，跳转common/reflect/marshal.go查看MarshalToJson的定义
+	   	// 这里为什么不直接调用json.MarshalIndent进行序列化，只知道空对象会保留，显示为null
+	   	// if j, err := json.MarshalIndent(c, "", "  "); err == nil {
+	   	// 	return string(j[:]), nil
+	   	// }
+	   	if j, ok := creflect.MarshalToJson(c); ok { */
+	if j, ok := creflect.MarshalToJson(c, true); ok {
 		return j, nil
 	}
 	return "", errors.New("marshal to json failed.").AtError()
 }
 
-func mergeConfigs(files []string, formats []string) (*conf.Config, error) {
+func mergeConfigs(files []*core.ConfigSource) (*conf.Config, error) {
 	cf := &conf.Config{}
 	for i, file := range files {
 		errors.LogInfo(context.Background(), "Reading config: ", file)
+		/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
 		// 跳转main/confloader/confloader.go查看LoadConfig的定义
 		// 这里LoadConfig返回的r是一个实现了io.Reader接口的Buffer类型
 		r, err := confloader.LoadConfig(file)
@@ -41,7 +50,12 @@ func mergeConfigs(files []string, formats []string) (*conf.Config, error) {
 		}
 		// ReaderDecoderByFormat是一个map[string]readerDecoder类型，在init函数初始化，key是文件格式，value是一个对应格式的decode函数
 		// 这里根据文件类型找到对应的decode函数，传入buffer调用，以json为例，跳转infra/conf/serial/loader.go查看DecodeJSONConfig的定义
-		c, err := ReaderDecoderByFormat[formats[i]](r)
+		c, err := ReaderDecoderByFormat[formats[i]](r) */
+		r, err := confloader.LoadConfig(file.Name)
+		if err != nil {
+			return nil, errors.New("failed to read config: ", file).Base(err)
+		}
+		c, err := ReaderDecoderByFormat[file.Format](r)
 		if err != nil {
 			return nil, errors.New("failed to decode config: ", file).Base(err)
 		}
@@ -50,15 +64,17 @@ func mergeConfigs(files []string, formats []string) (*conf.Config, error) {
 			*cf = *c
 			continue
 		}
+		/* 	同上
 		// 后续每解析一个文件，都会和cf进行合并，跳转infra/conf/xray.go查看Override的定义
-		cf.Override(c, file)
+		cf.Override(c, file) */
+		cf.Override(c, file.Name)
 	}
 	// 返回合并好的Config对象
 	return cf, nil
 }
 
-func BuildConfig(files []string, formats []string) (*core.Config, error) {
-	config, err := mergeConfigs(files, formats)
+func BuildConfig(files []*core.ConfigSource) (*core.Config, error) {
+	config, err := mergeConfigs(files)
 	if err != nil {
 		return nil, err
 	}

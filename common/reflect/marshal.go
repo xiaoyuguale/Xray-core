@@ -1,28 +1,49 @@
 package reflect
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"strings"
 
+	cnet "github.com/xtls/xray-core/common/net"
 	cserial "github.com/xtls/xray-core/common/serial"
+	"github.com/xtls/xray-core/infra/conf"
 )
 
-func MarshalToJson(v interface{}) (string, bool) {
-	// 查看marshalInterface的定义
-	// 大概看懂了marshalInterface的目的：
-	// 这里的参数v，本来传入的是*conf.Config类型的变量，其实是可以直接进行json序列化的，但是这样出来的json串会包含空对象，显示为null
-	// 所以这里经过了一系列的处理，把原来的*conf.Config对象转换成map（字段名由小写转换为大写），并且把null的对象都去掉了
-	// 而且map转json还会按照ascii码对key进行排序，跳转标准库encoding/json/encode.go查看源码
-	if itf := marshalInterface(v, true); itf != nil {
-		// 这里返回的itf是一个嵌套的map
-		if b, err := json.MarshalIndent(itf, "", "  "); err == nil {
+/*
+由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
+
+	func MarshalToJson(v interface{}) (string, bool) {
+		// 查看marshalInterface的定义
+		// 大概看懂了marshalInterface的目的：
+		// 这里的参数v，本来传入的是*conf.Config类型的变量，其实是可以直接进行json序列化的，但是这样出来的json串会包含空对象，显示为null
+		// 所以这里经过了一系列的处理，把原来的*conf.Config对象转换成map（字段名由小写转换为大写），并且把null的对象都去掉了
+		// 而且map转json还会按照ascii码对key进行排序，跳转标准库encoding/json/encode.go查看源码
+		if itf := marshalInterface(v, true); itf != nil {
+			// 这里返回的itf是一个嵌套的map
+			if b, err := json.MarshalIndent(itf, "", "  "); err == nil {
+*/
+func MarshalToJson(v interface{}, insertTypeInfo bool) (string, bool) {
+	if itf := marshalInterface(v, true, insertTypeInfo); itf != nil {
+		if b, err := JSONMarshalWithoutEscape(itf); err == nil {
 			return string(b[:]), true
 		}
 	}
 	return "", false
 }
 
-func marshalTypedMessage(v *cserial.TypedMessage, ignoreNullValue bool) interface{} {
+func JSONMarshalWithoutEscape(t interface{}) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetIndent("", "    ")
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(t)
+	return buffer.Bytes(), err
+}
+
+func marshalTypedMessage(v *cserial.TypedMessage, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 	if v == nil {
 		return nil
 	}
@@ -30,14 +51,14 @@ func marshalTypedMessage(v *cserial.TypedMessage, ignoreNullValue bool) interfac
 	if err != nil {
 		return nil
 	}
-	r := marshalInterface(tmsg, ignoreNullValue)
-	if msg, ok := r.(map[string]interface{}); ok {
+	r := marshalInterface(tmsg, ignoreNullValue, insertTypeInfo)
+	if msg, ok := r.(map[string]interface{}); ok && insertTypeInfo {
 		msg["_TypedMessage_"] = v.Type
 	}
 	return r
 }
 
-func marshalSlice(v reflect.Value, ignoreNullValue bool) interface{} {
+func marshalSlice(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 	r := make([]interface{}, 0)
 	// 获取反射值对象的元素个数，支持Array，Chan，Map，Slice，String和指向Array的pointer
 	for i := 0; i < v.Len(); i++ {
@@ -46,14 +67,47 @@ func marshalSlice(v reflect.Value, ignoreNullValue bool) interface{} {
 		// 元素的反射值对象可能是结构体，需要用CanInterface先判断一下
 		if rv.CanInterface() {
 			value := rv.Interface()
+			/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
 			// 再次调用marshalInterface，作用参考marshalStruct里面的分析
-			r = append(r, marshalInterface(value, ignoreNullValue))
+			r = append(r, marshalInterface(value, ignoreNullValue)) */
+			r = append(r, marshalInterface(value, ignoreNullValue, insertTypeInfo))
 		}
 	}
 	return r
 }
 
-func marshalStruct(v reflect.Value, ignoreNullValue bool) interface{} {
+func isNullValue(f reflect.StructField, rv reflect.Value) bool {
+	if rv.Kind() == reflect.String && rv.Len() == 0 {
+		return true
+	} else if !isValueKind(rv.Kind()) && rv.IsNil() {
+		return true
+	} else if tag := f.Tag.Get("json"); strings.Contains(tag, "omitempty") {
+		if !rv.IsValid() || rv.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
+func toJsonName(f reflect.StructField) string {
+	if tags := f.Tag.Get("protobuf"); len(tags) > 0 {
+		for _, tag := range strings.Split(tags, ",") {
+			if before, after, ok := strings.Cut(tag, "="); ok && before == "json" {
+				return after
+			}
+		}
+	}
+	if tag := f.Tag.Get("json"); len(tag) > 0 {
+		if before, _, ok := strings.Cut(tag, ","); ok {
+			return before
+		} else {
+			return tag
+		}
+	}
+	return f.Name
+}
+
+func marshalStruct(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 	r := make(map[string]interface{})
 	// reflect.Value.Type：获取反射值对象的类型
 	t := v.Type()
@@ -67,6 +121,7 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool) interface{} {
 		if rv.CanInterface() {
 			// reflect.Type.Field：返回结构体类型的第i个字段，类型是reflect.StructField
 			ft := t.Field(i)
+			/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
 			// reflect.StructField.Name：返回结构体字段的名称
 			name := ft.Name
 			// reflect.Value.Interface：获取反射值对象的interface对象，也就是传递给reflect.ValueOf的那个变量本身
@@ -77,7 +132,11 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool) interface{} {
 			// 这里返回的tv能保存到map的条件：
 			// 1. tv不为nil；
 			// 2. 如果tv为nil，但是前提没有要求忽略nil（!ignoreNullValue当ignoreNullValue为false是成立），则tv可以保存到map
-			if tv != nil || !ignoreNullValue {
+			if tv != nil || !ignoreNullValue { */
+			if !ignoreNullValue || !isNullValue(ft, rv) {
+				name := toJsonName(ft)
+				value := rv.Interface()
+				tv := marshalInterface(value, ignoreNullValue, insertTypeInfo)
 				r[name] = tv
 			}
 		}
@@ -85,7 +144,7 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool) interface{} {
 	return r
 }
 
-func marshalMap(v reflect.Value, ignoreNullValue bool) interface{} {
+func marshalMap(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 	// policy.level is map[uint32] *struct
 	// reflect.Type.Key：获取map的key的reflect.Type，如果反射值v对象的种类不是map，则会panic
 	kt := v.Type().Key()
@@ -103,7 +162,7 @@ func marshalMap(v reflect.Value, ignoreNullValue bool) interface{} {
 		// 遇到结构体，继续调用marshalInterface
 		if rv.CanInterface() {
 			iv := rv.Interface()
-			tv := marshalInterface(iv, ignoreNullValue)
+			tv := marshalInterface(iv, ignoreNullValue, insertTypeInfo)
 			if tv != nil || !ignoreNullValue {
 				r.SetMapIndex(key, reflect.ValueOf(&tv))
 			}
@@ -119,28 +178,69 @@ func marshalIString(v interface{}) (r string, ok bool) {
 			ok = false
 		}
 	}()
-
 	if iStringFn, ok := v.(interface{ String() string }); ok {
 		return iStringFn.String(), true
 	}
 	return "", false
 }
 
-func marshalKnownType(v interface{}, ignoreNullValue bool) (interface{}, bool) {
-	// type-switch：判断某个interface变量中实际存储的变量类型
+/*
+由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
+
+	func marshalKnownType(v interface{}, ignoreNullValue bool) (interface{}, bool) {
+		// type-switch：判断某个interface变量中实际存储的变量类型
+*/
+func serializePortList(portList *cnet.PortList) (interface{}, bool) {
+	if portList == nil {
+		return nil, false
+	}
+
+	n := len(portList.Range)
+	if n == 1 {
+		if first := portList.Range[0]; first.From == first.To {
+			return first.From, true
+		}
+	}
+
+	r := make([]string, 0, n)
+	for _, pr := range portList.Range {
+		if pr.From == pr.To {
+			r = append(r, pr.FromPort().String())
+		} else {
+			r = append(r, fmt.Sprintf("%d-%d", pr.From, pr.To))
+		}
+	}
+	return strings.Join(r, ","), true
+}
+
+func marshalKnownType(v interface{}, ignoreNullValue bool, insertTypeInfo bool) (interface{}, bool) {
 	switch ty := v.(type) {
 	case cserial.TypedMessage:
-		return marshalTypedMessage(&ty, ignoreNullValue), true
+		return marshalTypedMessage(&ty, ignoreNullValue, insertTypeInfo), true
 	case *cserial.TypedMessage:
-		return marshalTypedMessage(ty, ignoreNullValue), true
+		return marshalTypedMessage(ty, ignoreNullValue, insertTypeInfo), true
 	case map[string]json.RawMessage:
 		return ty, true
 	case []json.RawMessage:
 		return ty, true
-	case *json.RawMessage:
+	case *json.RawMessage, json.RawMessage:
 		return ty, true
-	case json.RawMessage:
-		return ty, true
+	case *cnet.IPOrDomain:
+		if domain := v.(*cnet.IPOrDomain); domain != nil {
+			return domain.AsAddress().String(), true
+		}
+		return nil, false
+	case *cnet.PortList:
+		npl := v.(*cnet.PortList)
+		return serializePortList(npl)
+	case *conf.PortList:
+		cpl := v.(*conf.PortList)
+		return serializePortList(cpl.Build())
+	case cnet.Address:
+		if addr := v.(cnet.Address); addr != nil {
+			return addr.String(), true
+		}
+		return nil, false
 	default:
 		return nil, false
 	}
@@ -171,10 +271,12 @@ func isValueKind(kind reflect.Kind) bool {
 	}
 }
 
-func marshalInterface(v interface{}, ignoreNullValue bool) interface{} {
+func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 
+	/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
 	// marshalKnownType内部对v进行type-switch判断，返回识别出来的类型，查看marshalKnownType的定义
-	if r, ok := marshalKnownType(v, ignoreNullValue); ok {
+	if r, ok := marshalKnownType(v, ignoreNullValue); ok { */
+	if r, ok := marshalKnownType(v, ignoreNullValue, insertTypeInfo); ok {
 		return r
 	}
 
@@ -193,6 +295,7 @@ func marshalInterface(v interface{}, ignoreNullValue bool) interface{} {
 	if k == reflect.Invalid {
 		return nil
 	}
+	/* 同上
 	// 这里判断rv.Kind是否是指定的基本种类，是的话直接返回
 	if isValueKind(k) {
 		return v
@@ -205,12 +308,31 @@ func marshalInterface(v interface{}, ignoreNullValue bool) interface{} {
 		return marshalStruct(rv, ignoreNullValue)
 	case reflect.Slice:
 		// 查看marshalSlice的定义
-		return marshalSlice(rv, ignoreNullValue)
+		return marshalSlice(rv, ignoreNullValue) */
+
+	if ty := rv.Type().Name(); isValueKind(k) {
+		if k.String() != ty {
+			if s, ok := marshalIString(v); ok {
+				return s
+			}
+		}
+		return v
+	}
+
+	// fmt.Println("kind:", k, "type:", rv.Type().Name())
+
+	switch k {
+	case reflect.Struct:
+		return marshalStruct(rv, ignoreNullValue, insertTypeInfo)
+	case reflect.Slice:
+		return marshalSlice(rv, ignoreNullValue, insertTypeInfo)
 	case reflect.Array:
-		return marshalSlice(rv, ignoreNullValue)
+		return marshalSlice(rv, ignoreNullValue, insertTypeInfo)
 	case reflect.Map:
+		/* 同上
 		// 查看marshalMap的定义
-		return marshalMap(rv, ignoreNullValue)
+		return marshalMap(rv, ignoreNullValue) */
+		return marshalMap(rv, ignoreNullValue, insertTypeInfo)
 	default:
 		break
 	}

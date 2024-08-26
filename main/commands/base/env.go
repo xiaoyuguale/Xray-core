@@ -1,10 +1,5 @@
 package base
 
-import (
-	"os"
-	"path"
-)
-
 // CommandEnvHolder is a struct holds the environment info of commands
 type CommandEnvHolder struct {
 	// Executable name of current binary
@@ -17,6 +12,7 @@ type CommandEnvHolder struct {
 var CommandEnv CommandEnvHolder
 
 func init() {
+	/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/030c9efc8ce914bf2fcf97aa7cc91282397fa590
 	// os.Executable返回当前执行程序的绝对路径
 	exec, err := os.Executable()
 	if err != nil {
@@ -27,6 +23,13 @@ func init() {
 	// 如果参数是"/"，返回"/"
 	// 其他情况，去掉末尾的"/"，返回最后一个"/"后面的部分
 	CommandEnv.Exec = path.Base(exec)
-	// 这里为什么获取Base后又重新设定为xray？
+	// 这里为什么获取Base后又重新设定为xray？ */
+	/*
+		exec, err := os.Executable()
+		if err != nil {
+			return
+		}
+		CommandEnv.Exec = path.Base(exec)
+	*/
 	CommandEnv.Exec = "xray"
 }

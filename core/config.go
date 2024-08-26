@@ -19,14 +19,19 @@ type ConfigFormat struct {
 	Loader    ConfigLoader
 }
 
+type ConfigSource struct {
+	Name   string
+	Format string
+}
+
 // ConfigLoader is a utility to load Xray config from external source.
 type ConfigLoader func(input interface{}) (*Config, error)
 
 // ConfigBuilder is a builder to build core.Config from filenames and formats
-type ConfigBuilder func(files []string, formats []string) (*Config, error)
+type ConfigBuilder func(files []*ConfigSource) (*Config, error)
 
 // ConfigsMerger merge multiple json configs into on config
-type ConfigsMerger func(files []string, formats []string) (string, error)
+type ConfigsMerger func(files []*ConfigSource) (string, error)
 
 var (
 	configLoaderByName    = make(map[string]*ConfigFormat)
@@ -56,9 +61,11 @@ func RegisterConfigLoader(format *ConfigFormat) error {
 }
 
 func GetMergedConfig(args cmdarg.Arg) (string, error) {
-	files := make([]string, 0)
-	formats := make([]string, 0)
-	// 定义字符串切片，表示支持的文件格式
+	/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
+	   	files := make([]string, 0)
+	   	formats := make([]string, 0)
+	   	// 定义字符串切片，表示支持的文件格式 */
+	var files []*ConfigSource
 	supported := []string{"json", "yaml", "toml"}
 	for _, file := range args {
 		// 根据文件名获取文件格式，查看getFormat的定义
@@ -66,16 +73,20 @@ func GetMergedConfig(args cmdarg.Arg) (string, error) {
 		// 遍历supported，当文件格式支持时，把文件名追加到切片files，把对应的文件格式追加到切片formats
 		for _, s := range supported {
 			if s == format {
-				files = append(files, file)
-				formats = append(formats, format)
+				files = append(files, &ConfigSource{
+					Name:   file,
+					Format: format,
+				})
 				break
 			}
 		}
 	}
-	// 返回ConfigMergedFormFiles的执行结果，传入参数是文件切片和文件格式切片，查看ConfigMergedFormFiles的定义
-	// 注意，ConfigMergedFormFiles是一个函数类型的变量，需要给他赋值一个函数定义后，才能调用
-	// 搜索后发现，应该是在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
-	return ConfigMergedFormFiles(files, formats)
+	/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
+	   	// 返回ConfigMergedFormFiles的执行结果，传入参数是文件切片和文件格式切片，查看ConfigMergedFormFiles的定义
+	   	// 注意，ConfigMergedFormFiles是一个函数类型的变量，需要给他赋值一个函数定义后，才能调用
+	   	// 搜索后发现，应该是在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
+	   	return ConfigMergedFormFiles(files, formats) */
+	return ConfigMergedFormFiles(files)
 }
 
 func GetFormatByExtension(ext string) string {
@@ -113,7 +124,7 @@ func getFormat(filename string) string {
 func LoadConfig(formatName string, input interface{}) (*Config, error) {
 	switch v := input.(type) {
 	case cmdarg.Arg:
-		formats := make([]string, len(v))
+		files := make([]*ConfigSource, len(v))
 		hasProtobuf := false
 		for i, file := range v {
 			var f string
@@ -135,7 +146,10 @@ func LoadConfig(formatName string, input interface{}) (*Config, error) {
 			if f == "protobuf" {
 				hasProtobuf = true
 			}
-			formats[i] = f
+			files[i] = &ConfigSource{
+				Name:   file,
+				Format: f,
+			}
 		}
 
 		// only one protobuf config file is allowed
@@ -148,8 +162,7 @@ func LoadConfig(formatName string, input interface{}) (*Config, error) {
 		}
 
 		// to avoid import cycle
-		return ConfigBuilderForFiles(v, formats)
-
+		return ConfigBuilderForFiles(files)
 	case io.Reader:
 		if f, found := configLoaderByName[formatName]; found {
 			return f.Loader(v)
