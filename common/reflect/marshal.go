@@ -20,6 +20,7 @@ func MarshalToJson(v interface{}, insertTypeInfo bool) (string, bool) {
 	// 所以这里经过了一系列的处理，把原来的*conf.Config对象转换成map（字段名由小写转换为大写），并且把null的对象都去掉了
 	// 而且map转json还会按照ascii码对key进行排序，跳转标准库encoding/json/encode.go查看源码
 	if itf := marshalInterface(v, true, insertTypeInfo); itf != nil {
+		// 这里返回的itf是一个嵌套的map
 		if b, err := JSONMarshalWithoutEscape(itf); err == nil {
 			return string(b[:]), true
 		}
@@ -31,6 +32,7 @@ func JSONMarshalWithoutEscape(t interface{}) ([]byte, error) {
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)
 	encoder.SetIndent("", "    ")
+	// encoding/json默认会把html的&<>字符转义，但是JSON规范没有要求将&<>作为特殊字符转义处理，这里关闭转义行为
 	encoder.SetEscapeHTML(false)
 	err := encoder.Encode(t)
 	return buffer.Bytes(), err
@@ -115,6 +117,7 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) i
 			// reflect.Type.Field：返回结构体类型的第i个字段，类型是reflect.StructField
 			ft := t.Field(i)
 			if !ignoreNullValue || !isNullValue(ft, rv) {
+				// 这里是获取结构体里面json标签的值作为map的key，原来是直接用结构体字段名作为map的key，所以出来的json成员是大写开头
 				name := toJsonName(ft)
 				value := rv.Interface()
 				tv := marshalInterface(value, ignoreNullValue, insertTypeInfo)
@@ -276,6 +279,7 @@ func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) 
 		return nil
 	}
 
+	// 如果k不是isValueKind指定的基本种类，是其他基本种类（struct，slice，array等），执行下面的处理，不知道有什么用？
 	if ty := rv.Type().Name(); isValueKind(k) {
 		if k.String() != ty {
 			if s, ok := marshalIString(v); ok {
