@@ -61,16 +61,14 @@ func RegisterConfigLoader(format *ConfigFormat) error {
 }
 
 func GetMergedConfig(args cmdarg.Arg) (string, error) {
-	/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
-	   	files := make([]string, 0)
-	   	formats := make([]string, 0)
-	   	// 定义字符串切片，表示支持的文件格式 */
+	// 定义*ConfigSource类型的切片files，结构体ConfigSource可以保存文件名和文件格式
 	var files []*ConfigSource
+	// 定义字符串切片，表示支持的文件格式
 	supported := []string{"json", "yaml", "toml"}
 	for _, file := range args {
 		// 根据文件名获取文件格式，查看getFormat的定义
 		format := getFormat(file)
-		// 遍历supported，当文件格式支持时，把文件名追加到切片files，把对应的文件格式追加到切片formats
+		// 遍历supported，当文件格式支持时，把文件名和文件格式以结构体ConfigSource的形式追加到切片files
 		for _, s := range supported {
 			if s == format {
 				files = append(files, &ConfigSource{
@@ -81,11 +79,9 @@ func GetMergedConfig(args cmdarg.Arg) (string, error) {
 			}
 		}
 	}
-	/* 	由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/1562e1ffb9435d66fa0f776de276e0c891fd1113
-	   	// 返回ConfigMergedFormFiles的执行结果，传入参数是文件切片和文件格式切片，查看ConfigMergedFormFiles的定义
-	   	// 注意，ConfigMergedFormFiles是一个函数类型的变量，需要给他赋值一个函数定义后，才能调用
-	   	// 搜索后发现，应该是在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
-	   	return ConfigMergedFormFiles(files, formats) */
+	// 返回ConfigMergedFormFiles的执行结果，传入参数是*ConfigSource类型的切片，查看ConfigMergedFormFiles的定义
+	// 注意，ConfigMergedFormFiles是一个函数类型的变量，需要给他赋值一个函数定义后，才能调用
+	// 搜索后发现，应该是在infra/conf/serial/builder.go的init函数里面赋值了MergeConfigFromFiles函数，跳转查看
 	return ConfigMergedFormFiles(files)
 }
 

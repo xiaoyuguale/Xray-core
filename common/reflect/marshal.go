@@ -12,21 +12,14 @@ import (
 	"github.com/xtls/xray-core/infra/conf"
 )
 
-/*
-由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
-
-	func MarshalToJson(v interface{}) (string, bool) {
-		// 查看marshalInterface的定义
-		// 大概看懂了marshalInterface的目的：
-		// 这里的参数v，本来传入的是*conf.Config类型的变量，其实是可以直接进行json序列化的，但是这样出来的json串会包含空对象，显示为null
-		// 所以这里经过了一系列的处理，把原来的*conf.Config对象转换成map（字段名由小写转换为大写），并且把null的对象都去掉了
-		// 而且map转json还会按照ascii码对key进行排序，跳转标准库encoding/json/encode.go查看源码
-		if itf := marshalInterface(v, true); itf != nil {
-			// 这里返回的itf是一个嵌套的map
-			if b, err := json.MarshalIndent(itf, "", "  "); err == nil {
-*/
 func MarshalToJson(v interface{}, insertTypeInfo bool) (string, bool) {
+	// 查看marshalInterface的定义
+	// 大概看懂了marshalInterface的目的：
+	// 这里的参数v，本来传入的是*conf.Config类型的变量，其实是可以直接进行json序列化的，但是这样出来的json串会包含空对象，显示为null
+	// 所以这里经过了一系列的处理，把原来的*conf.Config对象转换成map，并且把null的对象都去掉了
+	// 而且map转json还会按照ascii码对key进行排序，跳转标准库encoding/json/encode.go查看源码
 	if itf := marshalInterface(v, true, insertTypeInfo); itf != nil {
+		// 这里返回的itf是一个嵌套的map
 		if b, err := JSONMarshalWithoutEscape(itf); err == nil {
 			return string(b[:]), true
 		}
@@ -38,6 +31,7 @@ func JSONMarshalWithoutEscape(t interface{}) ([]byte, error) {
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)
 	encoder.SetIndent("", "    ")
+	// encoding/json默认会把html的&<>字符转义，但是JSON规范没有要求将&<>作为特殊字符转义处理，这里关闭转义行为
 	encoder.SetEscapeHTML(false)
 	err := encoder.Encode(t)
 	return buffer.Bytes(), err
@@ -67,9 +61,7 @@ func marshalSlice(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) in
 		// 元素的反射值对象可能是结构体，需要用CanInterface先判断一下
 		if rv.CanInterface() {
 			value := rv.Interface()
-			/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
 			// 再次调用marshalInterface，作用参考marshalStruct里面的分析
-			r = append(r, marshalInterface(value, ignoreNullValue)) */
 			r = append(r, marshalInterface(value, ignoreNullValue, insertTypeInfo))
 		}
 	}
@@ -134,6 +126,7 @@ func marshalStruct(v reflect.Value, ignoreNullValue bool, insertTypeInfo bool) i
 			// 2. 如果tv为nil，但是前提没有要求忽略nil（!ignoreNullValue当ignoreNullValue为false是成立），则tv可以保存到map
 			if tv != nil || !ignoreNullValue { */
 			if !ignoreNullValue || !isNullValue(ft, rv) {
+				// 这里是获取结构体里面json标签的值作为map的key，原来是直接用结构体字段名作为map的key，所以出来的json成员是大写开头
 				name := toJsonName(ft)
 				value := rv.Interface()
 				tv := marshalInterface(value, ignoreNullValue, insertTypeInfo)
@@ -184,12 +177,6 @@ func marshalIString(v interface{}) (r string, ok bool) {
 	return "", false
 }
 
-/*
-由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
-
-	func marshalKnownType(v interface{}, ignoreNullValue bool) (interface{}, bool) {
-		// type-switch：判断某个interface变量中实际存储的变量类型
-*/
 func serializePortList(portList *cnet.PortList) (interface{}, bool) {
 	if portList == nil {
 		return nil, false
@@ -273,9 +260,7 @@ func isValueKind(kind reflect.Kind) bool {
 
 func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) interface{} {
 
-	/* 由于上游修改，需要重新分析，查看https://github.com/XTLS/Xray-core/commit/ac628a942770c6421402ad7ecc054d61b679512d
 	// marshalKnownType内部对v进行type-switch判断，返回识别出来的类型，查看marshalKnownType的定义
-	if r, ok := marshalKnownType(v, ignoreNullValue); ok { */
 	if r, ok := marshalKnownType(v, ignoreNullValue, insertTypeInfo); ok {
 		return r
 	}
@@ -295,21 +280,8 @@ func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) 
 	if k == reflect.Invalid {
 		return nil
 	}
-	/* 同上
-	// 这里判断rv.Kind是否是指定的基本种类，是的话直接返回
-	if isValueKind(k) {
-		return v
-	}
 
-	// 如果k不是isValueKind指定的基本种类，是其他基本种类（struct，slice，array等），根据k的值选择不同的处理
-	switch k {
-	case reflect.Struct:
-		// 查看marshalStruct的定义
-		return marshalStruct(rv, ignoreNullValue)
-	case reflect.Slice:
-		// 查看marshalSlice的定义
-		return marshalSlice(rv, ignoreNullValue) */
-
+	// 如果k不是isValueKind指定的基本种类，是其他基本种类（struct，slice，array等），执行下面的处理，不知道有什么用？
 	if ty := rv.Type().Name(); isValueKind(k) {
 		if k.String() != ty {
 			if s, ok := marshalIString(v); ok {
@@ -323,15 +295,15 @@ func marshalInterface(v interface{}, ignoreNullValue bool, insertTypeInfo bool) 
 
 	switch k {
 	case reflect.Struct:
+		// 查看marshalStruct的定义
 		return marshalStruct(rv, ignoreNullValue, insertTypeInfo)
 	case reflect.Slice:
+		// 查看marshalSlice的定义
 		return marshalSlice(rv, ignoreNullValue, insertTypeInfo)
 	case reflect.Array:
 		return marshalSlice(rv, ignoreNullValue, insertTypeInfo)
 	case reflect.Map:
-		/* 同上
 		// 查看marshalMap的定义
-		return marshalMap(rv, ignoreNullValue) */
 		return marshalMap(rv, ignoreNullValue, insertTypeInfo)
 	default:
 		break
