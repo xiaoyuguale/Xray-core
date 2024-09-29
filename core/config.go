@@ -62,6 +62,7 @@ func RegisterConfigLoader(format *ConfigFormat) error {
 }
 
 func GetMergedConfig(args cmdarg.Arg) (string, error) {
+	// 定义*ConfigSource类型的切片files，结构体ConfigSource可以保存文件名和文件格式
 	var files []*ConfigSource
 	// 定义字符串切片，表示支持的文件格式
 	supported := []string{"json", "yaml", "toml"}
