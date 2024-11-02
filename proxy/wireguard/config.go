@@ -1,5 +1,11 @@
 package wireguard
 
+import (
+	"context"
+
+	"github.com/xtls/xray-core/common/errors"
+)
+
 func (c *DeviceConfig) preferIP4() bool {
 	return c.DomainStrategy == DeviceConfig_FORCE_IP ||
 		c.DomainStrategy == DeviceConfig_FORCE_IP4 ||
@@ -25,8 +31,24 @@ func (c *DeviceConfig) fallbackIP6() bool {
 }
 
 func (c *DeviceConfig) createTun() tunCreator {
-	if c.KernelMode {
-		return createKernelTun
+	// System TUN not support promiscuous mode yet, don't use it when work in inbound mode
+	// See tun_linux.go createKernelTun()
+	if !c.IsClient {
+		return createGVisorTun
 	}
-	return createGVisorTun
+	if c.NoKernelTun {
+		errors.LogWarning(context.Background(), "Using gVisor TUN.")
+		return createGVisorTun
+	}
+	kernelTunSupported, err := KernelTunSupported()
+	if err != nil {
+		errors.LogWarning(context.Background(), "Using gVisor TUN. Failed to check kernel TUN support:", err)
+		return createGVisorTun
+	}
+	if !kernelTunSupported {
+		errors.LogWarning(context.Background(), "Using gVisor TUN. Kernel TUN is not supported on your OS, or your permission is insufficient.")
+		return createGVisorTun
+	}
+	errors.LogWarning(context.Background(), "Using kernel TUN.")
+	return createKernelTun
 }
