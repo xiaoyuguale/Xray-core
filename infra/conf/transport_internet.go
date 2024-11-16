@@ -233,6 +233,8 @@ type SplitHTTPConfig struct {
 	XPaddingBytes        *Int32Range       `json:"xPaddingBytes"`
 	Xmux                 Xmux              `json:"xmux"`
 	DownloadSettings     *StreamConfig     `json:"downloadSettings"`
+	Mode                 string            `json:"mode"`
+	Extra                json.RawMessage   `json:"extra"`
 }
 
 type Xmux struct {
@@ -258,6 +260,18 @@ func splithttpNewRandRangeConfig(input *Int32Range) *splithttp.RandRangeConfig {
 
 // Build implements Buildable.
 func (c *SplitHTTPConfig) Build() (proto.Message, error) {
+	if c.Extra != nil {
+		var extra SplitHTTPConfig
+		if err := json.Unmarshal(c.Extra, &extra); err != nil {
+			return nil, errors.New(`Failed to unmarshal "extra".`).Base(err)
+		}
+		extra.Host = c.Host
+		extra.Path = c.Path
+		extra.Mode = c.Mode
+		extra.Extra = c.Extra
+		c = &extra
+	}
+
 	// If http host is not set in the Host field, but in headers field, we add it to Host Field here.
 	// If we don't do that, http host will be overwritten as address.
 	// Host priority: Host field > headers field > address.
@@ -289,6 +303,14 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		muxProtobuf.CMaxReuseTimes.To = 128
 	}
 
+	switch c.Mode {
+	case "":
+		c.Mode = "auto"
+	case "auto", "packet-up", "stream-up":
+	default:
+		return nil, errors.New("unsupported mode: " + c.Mode)
+	}
+
 	config := &splithttp.Config{
 		Path:                 c.Path,
 		Host:                 c.Host,
@@ -299,9 +321,13 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		NoSSEHeader:          c.NoSSEHeader,
 		XPaddingBytes:        splithttpNewRandRangeConfig(c.XPaddingBytes),
 		Xmux:                 &muxProtobuf,
+		Mode:                 c.Mode,
 	}
 	var err error
 	if c.DownloadSettings != nil {
+		if c.Extra != nil {
+			c.DownloadSettings.SocketSettings = nil
+		}
 		if config.DownloadSettings, err = c.DownloadSettings.Build(); err != nil {
 			return nil, errors.New(`Failed to build "downloadSettings".`).Base(err)
 		}
@@ -430,6 +456,7 @@ type TLSConfig struct {
 	RejectUnknownSNI                     bool             `json:"rejectUnknownSni"`
 	PinnedPeerCertificateChainSha256     *[]string        `json:"pinnedPeerCertificateChainSha256"`
 	PinnedPeerCertificatePublicKeySha256 *[]string        `json:"pinnedPeerCertificatePublicKeySha256"`
+	CurvePreferences                     *StringList      `json:"curvePreferences"`
 	MasterKeyLog                         string           `json:"masterKeyLog"`
 }
 
@@ -451,6 +478,9 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 	}
 	if c.ALPN != nil && len(*c.ALPN) > 0 {
 		config.NextProtocol = []string(*c.ALPN)
+	}
+	if c.CurvePreferences != nil && len(*c.CurvePreferences) > 0 {
+		config.CurvePreferences = []string(*c.CurvePreferences)
 	}
 	config.EnableSessionResumption = c.EnableSessionResumption
 	config.DisableSystemRoot = c.DisableSystemRoot
@@ -568,7 +598,7 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 					return nil, errors.New(`invalid "minClientVer": `, c.MinClientVer)
 				}
 				if u, err = strconv.ParseUint(s, 10, 8); err != nil {
-					return nil, errors.New(`"minClientVer[`, i, `]" should be lesser than 256`)
+					return nil, errors.New(`"minClientVer[`, i, `]" should be less than 256`)
 				} else {
 					config.MinClientVer[i] = byte(u)
 				}
@@ -582,7 +612,7 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 					return nil, errors.New(`invalid "maxClientVer": `, c.MaxClientVer)
 				}
 				if u, err = strconv.ParseUint(s, 10, 8); err != nil {
-					return nil, errors.New(`"maxClientVer[`, i, `]" should be lesser than 256`)
+					return nil, errors.New(`"maxClientVer[`, i, `]" should be less than 256`)
 				} else {
 					config.MaxClientVer[i] = byte(u)
 				}

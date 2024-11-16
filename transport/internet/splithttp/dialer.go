@@ -252,18 +252,19 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	requestURL.Path = transportConfiguration.GetNormalizedPath() + sessionIdUuid.String()
 	requestURL.RawQuery = transportConfiguration.GetNormalizedQuery()
 
-	httpClient, muxResource := getHTTPClient(ctx, dest, streamSettings)
+	httpClient, muxRes := getHTTPClient(ctx, dest, streamSettings)
 
-	var httpClient2 DialerClient
-	var requestURL2 url.URL
+	httpClient2 := httpClient
+	requestURL2 := requestURL
+	var muxRes2 *muxResource
 	if transportConfiguration.DownloadSettings != nil {
-		dest2 := net.Destination{
-			Address: transportConfiguration.DownloadSettings.Address.AsAddress(), // just panic
-			Port:    net.Port(transportConfiguration.DownloadSettings.Port),
-			Network: net.Network_TCP,
+		globalDialerAccess.Lock()
+		if streamSettings.DownloadSettings == nil {
+			streamSettings.DownloadSettings = common.Must2(internet.ToMemoryStreamConfig(transportConfiguration.DownloadSettings)).(*internet.MemoryStreamConfig)
 		}
-		memory2 := common.Must2(internet.ToMemoryStreamConfig(transportConfiguration.DownloadSettings)).(*internet.MemoryStreamConfig)
-		httpClient2, _ = getHTTPClient(ctx, dest2, memory2) // no multiplex
+		globalDialerAccess.Unlock()
+		memory2 := streamSettings.DownloadSettings
+		httpClient2, muxRes2 = getHTTPClient(ctx, *memory2.Destination, memory2) // just panic
 		if tls.ConfigFromStreamSettings(memory2) != nil || reality.ConfigFromStreamSettings(memory2) != nil {
 			requestURL2.Scheme = "https"
 		} else {
@@ -272,10 +273,51 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		config2 := memory2.ProtocolSettings.(*Config)
 		requestURL2.Host = config2.Host
 		if requestURL2.Host == "" {
-			requestURL2.Host = dest2.NetAddr()
+			requestURL2.Host = memory2.Destination.NetAddr()
 		}
-		requestURL2.Path = requestURL.Path // the same
+		requestURL2.Path = config2.GetNormalizedPath() + sessionIdUuid.String()
 		requestURL2.RawQuery = config2.GetNormalizedQuery()
+	}
+
+	reader, remoteAddr, localAddr, err := httpClient2.OpenDownload(context.WithoutCancel(ctx), requestURL2.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if muxRes != nil {
+		muxRes.OpenRequests.Add(1)
+	}
+	if muxRes2 != nil {
+		muxRes2.OpenRequests.Add(1)
+	}
+	closed := false
+
+	conn := splitConn{
+		writer:     nil,
+		reader:     reader,
+		remoteAddr: remoteAddr,
+		localAddr:  localAddr,
+		onClose: func() {
+			if closed {
+				return
+			}
+			closed = true
+			if muxRes != nil {
+				muxRes.OpenRequests.Add(-1)
+			}
+			if muxRes2 != nil {
+				muxRes2.OpenRequests.Add(-1)
+			}
+		},
+	}
+
+	mode := transportConfiguration.Mode
+	if mode == "auto" && realityConfig != nil {
+		mode = "stream-up"
+	}
+	if mode == "stream-up" {
+		conn.writer = httpClient.OpenUpload(ctx, requestURL.String())
+		return stat.Connection(&conn), nil
 	}
 
 	maxUploadSize := scMaxEachPostBytes.roll()
@@ -284,15 +326,12 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	// uploadWriter wrapper, exact size limits can be enforced
 	uploadPipeReader, uploadPipeWriter := pipe.New(pipe.WithSizeLimit(maxUploadSize - 1))
 
-	if muxResource != nil {
-		muxResource.OpenRequests.Add(1)
+	conn.writer = uploadWriter{
+		uploadPipeWriter,
+		maxUploadSize,
 	}
 
 	go func() {
-		if muxResource != nil {
-			defer muxResource.OpenRequests.Add(-1)
-		}
-
 		requestsLimiter := semaphore.New(int(scMaxConcurrentPosts.roll()))
 		var requestCounter int64
 
@@ -344,30 +383,6 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 			}
 		}
 	}()
-
-	httpClient3 := httpClient
-	requestURL3 := requestURL
-	if httpClient2 != nil {
-		httpClient3 = httpClient2
-		requestURL3 = requestURL2
-	}
-
-	reader, remoteAddr, localAddr, err := httpClient3.OpenDownload(context.WithoutCancel(ctx), requestURL3.String())
-	if err != nil {
-		return nil, err
-	}
-
-	writer := uploadWriter{
-		uploadPipeWriter,
-		maxUploadSize,
-	}
-
-	conn := splitConn{
-		writer:     writer,
-		reader:     reader,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
-	}
 
 	return stat.Connection(&conn), nil
 }
