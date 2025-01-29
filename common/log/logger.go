@@ -150,7 +150,7 @@ func CreateStdoutLogWriter() WriterCreator {
 			// 参数1：日志写入目的地
 			// 参数2：每条日志的前缀
 			// 参数3：日志属性
-			logger: log.New(os.Stdout, "", log.Ldate|log.Ltime),
+			logger: log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds),
 		}
 	}
 }
@@ -159,7 +159,7 @@ func CreateStdoutLogWriter() WriterCreator {
 func CreateStderrLogWriter() WriterCreator {
 	return func() Writer {
 		return &consoleLogWriter{
-			logger: log.New(os.Stderr, "", log.Ldate|log.Ltime),
+			logger: log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds),
 		}
 	}
 }
@@ -178,7 +178,7 @@ func CreateFileLogWriter(path string) (WriterCreator, error) {
 		}
 		return &fileLogWriter{
 			file:   file,
-			logger: log.New(file, "", log.Ldate|log.Ltime),
+			logger: log.New(file, "", log.Ldate|log.Ltime|log.Lmicroseconds),
 		}
 	}, nil
 }

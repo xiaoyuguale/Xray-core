@@ -2,6 +2,7 @@ package core
 
 import (
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/xtls/xray-core/common"
@@ -68,15 +69,12 @@ func GetMergedConfig(args cmdarg.Arg) (string, error) {
 	for _, file := range args {
 		// 根据文件名获取文件格式，查看getFormat的定义
 		format := getFormat(file)
-		// 遍历supported，当文件格式支持时，把文件名和文件格式以结构体ConfigSource的形式追加到切片files
-		for _, s := range supported {
-			if s == format {
-				files = append(files, &ConfigSource{
-					Name:   file,
-					Format: format,
-				})
-				break
-			}
+		// 当文件格式支持时，把文件名和文件格式以结构体ConfigSource的形式追加到切片files
+		if slices.Contains(supported, format) {
+			files = append(files, &ConfigSource{
+				Name:   file,
+				Format: format,
+			})
 		}
 	}
 	// 返回ConfigMergedFormFiles的执行结果，传入参数是*ConfigSource类型的切片，查看ConfigMergedFormFiles的定义
