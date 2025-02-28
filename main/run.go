@@ -45,6 +45,11 @@ The -dump flag tells Xray to print the merged config.
 
 func init() {
 	cmdRun.Run = executeRun // break init loop
+	// log的标志位是一组常量，通过iota和左移运算符来定义，每个常量对应一个独立的二进制位，可以通过按位或来组合多个标志位
+	// 如Ldata = 1 << iota，二进制表示为0001，所以Ltime = 1 << 2，就是0010
+	// 它们按位或的结果是0011，这样log包就知道同时需要日期和时间
+	// 日志格式由log包内部固定，标志位顺序不影响输出顺序，例如 Ldate | Ltime 和 Ltime | Ldate 的输出顺序均为日期在前
+	// log.SetFlags修改的是全局默认Logger，log.New可以创建独立Logger
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 }
 
@@ -62,6 +67,9 @@ var (
 	/* We have to do this here because Golang's Test will also need to parse flag, before
 	 * main func in this file is run.
 	 */
+	// 执行顺序：初始化变量 -> 执行init函数 -> 执行main函数
+	// 定义匿名函数，加括号表示立即调用的方式，将函数返回值赋值给变量，而非存储函数本身
+	// 可以在main函数之前执行test操作
 	_ = func() bool {
 		cmdRun.Flag.Var(&configFiles, "config", "Config path for Xray.")
 		cmdRun.Flag.Var(&configFiles, "c", "Short alias of -config")
