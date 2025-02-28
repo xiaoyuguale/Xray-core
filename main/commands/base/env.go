@@ -19,5 +19,7 @@ func init() {
 		}
 		CommandEnv.Exec = path.Base(exec)
 	*/
+	// 这部分代码和下面直接赋值"xray"的代码重复了，在030c9efc8ce914bf2fcf97aa7cc91282397fa590中移除了
+	// https://github.com/XTLS/Xray-core/commit/030c9efc8ce914bf2fcf97aa7cc91282397fa590
 	CommandEnv.Exec = "xray"
 }
