@@ -16,11 +16,15 @@ import (
 func Execute() {
 	flag.Parse()
 	args := flag.Args()
+	// len(args) < 1是什么形式？flag.Parse默认参数是os.Args[1:]，也就是命令行只有程序本身的形式
+	// 因为经过getArgsV4Compatible函数的处理，这种形式应该不会出现
+	// 把os.Args = getArgsV4Compatible()注释掉可以进入下面的逻辑
 	if len(args) < 1 {
 		PrintUsage(os.Stderr, RootCommand)
 		return
 	}
 	cmdName := args[0] // for error messages
+	// xray help xxx xxx
 	if args[0] == "help" {
 		Help(os.Stdout, args[1:])
 		return
