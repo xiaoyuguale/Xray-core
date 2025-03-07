@@ -11,6 +11,9 @@ import (
 )
 
 func main() {
+	// getArgsV4Compatible函数用于捕获错误命令和参数，设置默认命令和参数
+	// 函数返回值赋值给os.Args，给Execute方法解析使用
+	// 实际上不赋值给os.Args也行，这样Execute会解析默认的os.Args
 	os.Args = getArgsV4Compatible()
 
 	// base.RootCommand是*base.Command类型的变量，跳转main/commands/base/root.go查看定义
