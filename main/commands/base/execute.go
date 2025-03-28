@@ -24,7 +24,7 @@ func Execute() {
 		return
 	}
 	cmdName := args[0] // for error messages
-	// xray help xxx xxx
+	// xray help xxx xxx，跳转main/commands/bases/help.go查看定义
 	if args[0] == "help" {
 		Help(os.Stdout, args[1:])
 		return
