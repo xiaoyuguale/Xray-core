@@ -208,15 +208,18 @@ func getConfigFilePath(verbose bool) cmdarg.Arg {
 
 	// 如果没有使用参数指定配置文件，优先使用当前工作目录下的config.json
 	if workingDir, err := os.Getwd(); err == nil {
-		// 工作目录下的config.json的绝对路径保存为configFile
-		configFile := filepath.Join(workingDir, "config.json")
-		// 判断configFile是否存在，存在的话，是否不是目录，查看fileExists的定义
-		if fileExists(configFile) {
-			if verbose {
-				fmt.Println("提示：当前工作目录存在config.json，直接使用")
-				log.Println("Using default config: ", configFile)
+		suffixes := []string{".json", ".jsonc", ".toml", ".yaml", ".yml"}
+		for _, suffix := range suffixes {
+			// 工作目录下的config.json的绝对路径保存为configFile
+			configFile := filepath.Join(workingDir, "config"+suffix)
+			// 判断configFile是否存在，存在的话，是否不是目录，查看fileExists的定义
+			if fileExists(configFile) {
+				if verbose {
+					fmt.Println("提示：当前工作目录存在config.json，直接使用")
+					log.Println("Using default config: ", configFile)
+				}
+				return cmdarg.Arg{configFile}
 			}
-			return cmdarg.Arg{configFile}
 		}
 	}
 
