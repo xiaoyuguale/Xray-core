@@ -22,6 +22,9 @@ import (
 	"github.com/xtls/xray-core/main/commands/base"
 )
 
+// 这里{{.Exec}}是text/template的模板占位符用法，.Exec表示当前执行程序的文件名
+// 但是{{.Exec}}从哪里来的，系统是怎样知道.对应的是哪个对象？
+// 在渲染help信息的时候，会有一个类似tmpl.Execute(w, data)的过程，这里的data就是.对应的对象
 var cmdRun = &base.Command{
 	UsageLine: "{{.Exec}} run [-c config.json] [-confdir dir]",
 	Short:     "Run Xray with config, the default command",
