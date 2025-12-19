@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"fmt" // fmt包是私人分支为了打印信息import的
 	"os"
 
 	"github.com/xtls/xray-core/main/commands/base"
@@ -50,8 +50,14 @@ func getArgsV4Compatible() []string {
 	// 这里用NewFlagSet新建一个flag，用来解析参数version
 	// flag.ContinueOnError表示解析出错时会返回错误，程序不会直接退出
 	fs := flag.NewFlagSet("", flag.ContinueOnError)
+	// BoolVar第4个参数usage会在输入-h/-help（go的标准库flag包只支持单横杠的参数）或参数解析出错时使用
+	// flag provided but not defined: -v（这一行是参数解析出错时才会输出）
+	// Usage:
+	//   -version                   （这部分是flag的name前面加上单横杠，如果有\n，换行后的内容不会缩进）
+	// 		print version and exit  （这部分usage的内容，如果有\n，换行后的内容会自动缩进）
 	fs.BoolVar(&version, "version", false, "")
 	// parse silently, no usage, no error output
+	// flag.FlagSet在解析参数出错或遇到-h/-help时，会调用fs.Usage()，把usage信息输出到fs.Output（默认是os.Stderr），这里覆盖他们的行为，让usage和error都不输出
 	fs.Usage = func() {}
 	fs.SetOutput(&null{})
 	// NewFlagSet的Parse需要手动传入参数，CommandLine的Parse自动传入了os.Args[1:]
